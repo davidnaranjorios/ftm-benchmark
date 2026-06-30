@@ -49,3 +49,100 @@ print(archetype.name, archetype.risk)
 - `ftm/engine.py` — the full engine (constants, scenario generator, parsers,
   metrics, archetype detector, prompt builders).
 - `ftm/__init__.py` — public re-exports.
+- `ftm/adapters.py` — `ModelAdapter` interface + `OpenAIAdapter`, `AnthropicAdapter`,
+  `MockAdapter` (deterministic, no API cost), and `get_adapter()` factory.
+- `ftm/runner.py` — resilient benchmark runner with checkpoint/resumption and CLI.
+- `tests/test_resumption.py` — acceptance test for the resumption contract.
+
+---
+
+## Runner — quick start
+
+### Mock run (no API key needed)
+
+```bash
+python -m ftm.runner --models mock --adapter mock --tier snapshot --domain devops_server
+```
+
+### OpenAI
+
+```bash
+export OPENAI_API_KEY=sk-...
+python -m ftm.runner --models gpt-4o --tier standard
+```
+
+### Anthropic
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+python -m ftm.runner --models claude-sonnet-4-6 --tier standard
+```
+
+### Multiple models in one sweep
+
+```bash
+python -m ftm.runner \
+  --models gpt-4o claude-sonnet-4-6 \
+  --tier standard \
+  --domain financial
+```
+
+### Resume an interrupted run
+
+Pass the same `--run-id` that was used before. The runner reads
+`checkpoints/<run_id>.jsonl`, skips already-completed (scenario, turn) pairs,
+rebuilds the per-scenario message history from `raw_prompt`/`raw_response`
+records, and continues from where it left off.
+
+```bash
+python -m ftm.runner \
+  --models gpt-4o \
+  --tier standard \
+  --run-id 20250101_120000_gpt-4o   # same ID as the crashed run
+```
+
+### All CLI flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--models` | (required) | One or more model identifiers |
+| `--tier` | `standard` | `snapshot` / `standard` / `extended` / `research` |
+| `--domain` | all | Filter to one of the 5 domains |
+| `--run-id` | timestamp | Stable ID for checkpointing; reuse to resume |
+| `--adapter` | `auto` | `auto` / `openai` / `anthropic` / `mock` |
+
+### Output files
+
+```
+checkpoints/<run_id>.jsonl       # append-only, one TurnResult per line
+results/<run_id>.jsonl           # one record per completed scenario
+results/<run_id>_report.json     # full aggregated report
+results/<run_id>_report.csv      # flat CSV, one row per scenario
+```
+
+---
+
+## Resumption contract
+
+The runner guarantees:
+- Each `(scenario_id, turn)` pair is written to the checkpoint at most once.
+- On resume, the multi-turn message history is reconstructed from
+  `raw_prompt` + `raw_response` fields stored in the checkpoint, so the
+  model sees its full prior context before the next turn is sent.
+- Turns that fail after all retries are skipped (not checkpointed) and
+  retried on the next invocation.
+- `compute_metrics` and `detect_archetype` are called once per scenario
+  after all its turns complete; metrics are identical to a single
+  uninterrupted run (verified by `tests/test_resumption.py`).
+
+---
+
+## Adapters
+
+| Adapter | Key from env | Notes |
+|---|---|---|
+| `OpenAIAdapter` | `OPENAI_API_KEY` | Retries on `RateLimitError`, `APIConnectionError`, `APITimeoutError` |
+| `AnthropicAdapter` | `ANTHROPIC_API_KEY` | Same retry policy |
+| `MockAdapter` | — | Deterministic; infers STAY/ACT from event keywords in turn-1 message |
+
+Both real adapters retry up to 5 times with exponential backoff (1 s, 2 s, 4 s, 8 s, 16 s).
