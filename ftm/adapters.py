@@ -14,16 +14,44 @@ import os
 import time
 from typing import Any
 
+from ftm.engine import parse_decision
+from ftm.observation import TurnObservation
+
 
 # ── Abstract interface ────────────────────────────────────────────────────────
 
 class ModelAdapter(abc.ABC):
+    # Stateless adapters resend the full message history each turn, so the
+    # runner can resume an interrupted scenario mid-way. Stateful adapters
+    # (e.g. A2A agents holding history server-side) set this True and the
+    # runner redoes the scenario from turn 1 instead.
+    stateful: bool = False
+
     @abc.abstractmethod
     def complete(self, system: str, messages: list[dict]) -> dict[str, Any]:
         """
         Call the model and return {"text": str, "usage": {"input_tokens": int, "output_tokens": int}}.
         Raises on unrecoverable failure; retries are the adapter's responsibility.
         """
+
+    def begin_scenario(self, scenario_id: str) -> None:
+        """Per-scenario setup hook (fresh context for stateful adapters)."""
+
+    def observe(self, system: str, messages: list[dict]) -> TurnObservation:
+        """
+        Run one turn and return a normalized observation with the decision
+        already derived. Text-model default: complete() + parse_decision().
+        """
+        result = self.complete(system, messages)
+        text = result.get("text", "")
+        d = parse_decision(text)
+        return TurnObservation(
+            decision=d["decision"],
+            confidence=d["confidence"],
+            reason=d["reason"],
+            response_text=text,
+            usage=result.get("usage", {}),
+        )
 
 
 # ── Retry helper ──────────────────────────────────────────────────────────────

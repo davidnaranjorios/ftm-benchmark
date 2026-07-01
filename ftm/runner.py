@@ -43,7 +43,6 @@ from ftm.engine import (
     compute_metrics,
     detect_archetype,
     generate_scenarios,
-    parse_decision,
 )
 from ftm.adapters import ModelAdapter, get_adapter
 
@@ -129,7 +128,9 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
     Resumes transparently if checkpoints/<run_id>.jsonl already exists.
     Returns the aggregated report dict.
     """
-    # Load checkpoint index: {(scenario_id, turn): TurnResult}
+    # Load checkpoint index: {(scenario_id, turn): TurnResult}. The dict keeps
+    # the LAST record per key: when a stateful adapter redoes a scenario, the
+    # redone turns appended later supersede the stale partial ones.
     checkpoint_records = load_checkpoint(config.run_id)
     done: dict[tuple[str, int], TurnResult] = {
         (tr.scenario_id, tr.turn): tr for tr in checkpoint_records
@@ -168,10 +169,25 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
             logger.debug("[%s] %s — skipped (complete)", config.run_id, scenario.scenario_id)
             continue
 
+        # ── Stateful adapters (A2A): a partially-done scenario cannot be
+        # resumed mid-way — the agent's server-side history is gone. Redo it
+        # from turn 1 with a fresh context; the checkpoint loader keeps the
+        # last record per (scenario_id, turn), so redone turns supersede the
+        # stale partial ones.
+        if getattr(adapter, "stateful", False) and 0 < len(scenario_done) < config.max_turns:
+            logger.info(
+                "[%s] %s — stateful adapter: redoing scenario from turn 1 "
+                "(discarding %d partial turns)",
+                config.run_id, scenario.scenario_id, len(scenario_done),
+            )
+            scenario_done = {}
+
         # ── Rebuild message history from checkpoint turns ─────────────────────
         system = build_ftm_system_prompt(scenario)
         messages: list[dict] = []
         turn_results: list[TurnResult] = []
+
+        adapter.begin_scenario(scenario.scenario_id)
 
         for t in sorted(scenario_done):
             tr = scenario_done[t]
@@ -195,9 +211,8 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
 
             try:
                 t0 = time.time()
-                result = adapter.complete(system, messages)
+                obs = adapter.observe(system, messages)
                 latency_ms = int((time.time() - t0) * 1000)
-                raw_response = result["text"]
             except Exception as exc:
                 logger.error(
                     "[%s] %s turn %d failed: %s — skipping",
@@ -206,9 +221,8 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
                 messages.pop()  # remove the user message we just appended
                 continue
 
-            messages.append({"role": "assistant", "content": raw_response})
+            messages.append({"role": "assistant", "content": obs.response_text})
 
-            d = parse_decision(raw_response)
             channels = (
                 scenario.active_channels_by_turn[t - 1]
                 if t - 1 < len(scenario.active_channels_by_turn)
@@ -224,13 +238,13 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
                 channels=channels,
                 n_active_channels=len(channels),
                 optimal=scenario.optimal,
-                decision=d["decision"],
-                confidence=d["confidence"],
-                reason=d["reason"],
-                reason_class=classify_reason(d["reason"]),
-                is_correct=(d["decision"] == scenario.optimal),
+                decision=obs.decision,
+                confidence=obs.confidence,
+                reason=obs.reason,
+                reason_class=classify_reason(obs.reason),
+                is_correct=(obs.decision == scenario.optimal),
                 raw_prompt=user_msg,
-                raw_response=raw_response,
+                raw_response=obs.response_text,
                 latency_ms=latency_ms,
             )
 

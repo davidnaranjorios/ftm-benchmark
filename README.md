@@ -51,8 +51,15 @@ print(archetype.name, archetype.risk)
 - `ftm/__init__.py` — public re-exports.
 - `ftm/adapters.py` — `ModelAdapter` interface + `OpenAIAdapter`, `AnthropicAdapter`,
   `MockAdapter` (deterministic, no API cost), and `get_adapter()` factory.
+- `ftm/observation.py` — `TurnObservation`: normalized per-turn output; the
+  decision is derived inside the adapter, keeping the runner model-vs-agent agnostic.
+- `ftm/a2a.py` — `A2AAgentAdapter` (evaluates an AGENT via its A2A endpoint,
+  deriving STAY/ACT from real tool calls observed as OTel spans), plus
+  `InProcessSpanCollector` and `ToolClassifier`.
 - `ftm/runner.py` — resilient benchmark runner with checkpoint/resumption and CLI.
 - `tests/test_resumption.py` — acceptance test for the resumption contract.
+- `tests/fakes.py` + `tests/test_a2a_adapter.py` — in-process fake A2A agent +
+  fake OTel emitter and the A2A acceptance tests (no network, no tokens).
 
 ---
 
@@ -146,3 +153,35 @@ The runner guarantees:
 | `MockAdapter` | — | Deterministic; infers STAY/ACT from event keywords in turn-1 message |
 
 Both real adapters retry up to 5 times with exponential backoff (1 s, 2 s, 4 s, 8 s, 16 s).
+
+---
+
+## A2A agent evaluation
+
+`A2AAgentAdapter` (in `ftm/a2a.py`) evaluates an **agent** rather than a text
+model: each FTM turn is sent as an A2A message within a per-scenario
+`contextId`, and the decision is derived from the agent's **real tool calls**,
+observed as OpenTelemetry spans following the GenAI semantic conventions
+(`gen_ai.operation.name == "execute_tool"`, `gen_ai.tool.name` — never
+span-name substrings).
+
+Key behaviors:
+
+- **Async telemetry**: spans are read by polling the in-process collector with
+  a per-trace timeout. Zero spans in the window → **UNKNOWN** (recorded as
+  `PARSE_FAIL` with an `UNKNOWN:` reason so metrics exclude the turn) — never
+  STAY by default. STAY requires at least one span proving the pipeline is
+  alive.
+- **Stateful resumption**: A2A agents hold history server-side, so an
+  interrupted scenario is **redone from turn 1 with a fresh contextId** rather
+  than continued mid-way (`stateful = True`; the checkpoint keeps the last
+  record per turn, so redone turns supersede stale partial ones). Stateless
+  model adapters still resume turn-by-turn.
+- **Tool classification**: tools are classified ACTION/READ lazily as they
+  first appear in spans (no Agent-Card pre-enumeration). Priority: per-tool
+  operator override > LLM judge (language-agnostic) > English verb heuristic.
+  The verdict table is exportable via `ToolClassifier.export()` for audit.
+
+Everything is testable offline: `tests/fakes.py` provides an in-process fake
+A2A agent whose spans export synchronously (SimpleSpanProcessor semantics),
+with configurable late-span delay and span-drop modes.
