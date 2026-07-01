@@ -8,14 +8,24 @@ without knowing which strategy produced it.
 decision semantics:
     "STAY"       — adapter affirmatively observed a hold decision
     "ACT"        — adapter affirmatively observed an action
-    "PARSE_FAIL" — no decision could be derived. For A2A agents this covers
-                   the UNKNOWN case (zero telemetry spans within the polling
-                   window); the reason field carries the "UNKNOWN: ..." marker.
-                   Never mapped to STAY by default.
+    "PARSE_FAIL" — the model/agent RESPONDED but the decision could not be
+                   derived from its behavior (unparseable text). Reserved for
+                   behavioral failures only.
+
+Telemetry loss is NOT a decision: when an agent adapter cannot observe the
+turn at all (e.g. zero OTel spans within the polling window), it raises
+TelemetryLostError instead of returning an observation. The runner treats it
+as a permanent turn failure: no TurnResult, the scenario is left incomplete
+and unscored, and it is redone on the next run.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+
+class TelemetryLostError(Exception):
+    """The turn ran but its behavior could not be observed (infra failure,
+    not agent behavior). Never mapped to STAY or PARSE_FAIL."""
 
 
 @dataclass

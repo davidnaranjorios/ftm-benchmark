@@ -45,6 +45,7 @@ from ftm.engine import (
     generate_scenarios,
 )
 from ftm.adapters import ModelAdapter, get_adapter
+from ftm.observation import TelemetryLostError
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,10 @@ def load_checkpoint(run_id: str) -> list[TurnResult]:
             if not line:
                 continue
             try:
-                results.append(TurnResult(**json.loads(line)))
+                data = json.loads(line)
+                if data.get("_failure"):
+                    continue  # audit-only failure record, not a TurnResult
+                results.append(TurnResult(**data))
             except Exception as exc:
                 logger.warning("Checkpoint %s line %d skipped (%s)", run_id, lineno, exc)
     return results
@@ -97,6 +101,19 @@ def load_checkpoint(run_id: str) -> list[TurnResult]:
 def _append_checkpoint(run_id: str, tr: TurnResult) -> None:
     with _checkpoint_path(run_id).open("a") as f:
         f.write(json.dumps(dataclasses.asdict(tr)) + "\n")
+
+
+def _append_failure(run_id: str, scenario_id: str, turn: int, error: str) -> None:
+    """Audit-only failure record; skipped by load_checkpoint."""
+    record = {
+        "_failure": True,
+        "scenario_id": scenario_id,
+        "turn": turn,
+        "error": error,
+        "ts": datetime.now().isoformat(),
+    }
+    with _checkpoint_path(run_id).open("a") as f:
+        f.write(json.dumps(record) + "\n")
 
 
 def _load_completed_scenario_ids(run_id: str) -> set[str]:
@@ -202,6 +219,7 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
             )
 
         # ── Run remaining turns ───────────────────────────────────────────────
+        scenario_aborted = False
         for t in range(1, config.max_turns + 1):
             if t in scenario_done:
                 continue
@@ -213,6 +231,17 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
                 t0 = time.time()
                 obs = adapter.observe(system, messages)
                 latency_ms = int((time.time() - t0) * 1000)
+            except TelemetryLostError as exc:
+                # Infra failure, not agent behavior: no TurnResult. Abort the
+                # scenario unscored; it is redone on the next run (stateful →
+                # from turn 1 with a fresh contextId).
+                logger.error(
+                    "[%s] %s turn %d telemetry lost: %s — aborting scenario",
+                    config.run_id, scenario.scenario_id, t, exc,
+                )
+                _append_failure(config.run_id, scenario.scenario_id, t, str(exc))
+                scenario_aborted = True
+                break
             except Exception as exc:
                 logger.error(
                     "[%s] %s turn %d failed: %s — skipping",
@@ -252,6 +281,12 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
             turn_results.append(tr)
 
         # ── Close scenario: metrics + archetype ───────────────────────────────
+        if scenario_aborted:
+            logger.info(
+                "[%s] %s — left incomplete (unscored); will be redone next run",
+                config.run_id, scenario.scenario_id,
+            )
+            continue
         if turn_results:
             record = _build_scenario_record(scenario, turn_results)
             if scenario.scenario_id not in completed_scenario_ids:

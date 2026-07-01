@@ -11,10 +11,12 @@ Span matching is attribute-based only — never by span.name substring.
 
 Telemetry is asynchronous: spans are ingested through a thread-safe in-process
 collector and read via polling with a per-trace timeout. If ZERO spans arrive
-for a trace within the window, the turn decision is UNKNOWN (surfaced as
-PARSE_FAIL with an "UNKNOWN: ..." reason) — never STAY by default. STAY is
-only concluded when at least one span proves the telemetry pipeline is alive
-and none of the observed spans is an ACTION tool call.
+for a trace within the window, the adapter raises TelemetryLostError — never
+STAY by default, and never PARSE_FAIL (which is reserved for behavioral
+failures). The runner aborts the scenario, leaves it unscored, and redoes it
+on the next run. STAY is only concluded when at least one span proves the
+telemetry pipeline is alive and none of the observed spans is an ACTION
+tool call.
 
 Tools are NOT pre-enumerated from the Agent Card (opaque agents don't expose
 them). Each tool is classified ACTION/READ lazily, the first time its name
@@ -36,7 +38,7 @@ import time
 import uuid
 from typing import Callable, Optional, Protocol
 
-from ftm.observation import TurnObservation
+from ftm.observation import TelemetryLostError, TurnObservation
 
 logger = logging.getLogger(__name__)
 
@@ -273,19 +275,11 @@ class A2AAgentAdapter:
 
         if not spans:
             # Telemetry pipeline silent: cannot distinguish "no tools" from
-            # "spans lost". UNKNOWN — surfaced as PARSE_FAIL so compute_metrics
-            # excludes the turn instead of scoring a decision we never saw.
-            reason = (
-                f"UNKNOWN: no telemetry spans received within {self.span_timeout_s}s "
+            # "spans lost". Infrastructure failure, not agent behavior —
+            # raise so the runner aborts the scenario unscored.
+            raise TelemetryLostError(
+                f"no telemetry spans received within {self.span_timeout_s}s "
                 f"for trace {trace_id}"
-            )
-            return TurnObservation(
-                decision="PARSE_FAIL",
-                confidence=0,
-                reason=reason,
-                response_text=response_text,
-                tool_calls=[],
-                usage=result.get("usage", {}),
             )
 
         tool_calls = []

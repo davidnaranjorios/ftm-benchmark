@@ -58,7 +58,9 @@ def _checkpoint_turns(tmpdir: Path, run_id: str) -> list[TurnResult]:
     with path.open() as f:
         for line in f:
             if line.strip():
-                out.append(TurnResult(**json.loads(line)))
+                data = json.loads(line)
+                if not data.get("_failure"):
+                    out.append(TurnResult(**data))
     return out
 
 
@@ -113,20 +115,38 @@ def test_late_span_detected_via_polling(tmp_path):
     )
 
 
-# ── 2b. No spans in window: UNKNOWN, never STAY (must-fix 1) ──────────────────
+# ── 2b. No spans in window: scenario left unscored, redone clean later ────────
 
-def test_no_spans_yields_unknown_never_stay(tmp_path):
+def test_no_spans_leaves_scenario_unscored_then_recovers(tmp_path):
+    """Telemetry loss is an infra failure, not behavior: no TurnResult, the
+    scenario stays incomplete and unscored, and a later run with healthy
+    telemetry completes it cleanly."""
     agent, adapter = _make_adapter({"drop_spans": True}, span_timeout_s=0.3)
-    _run_in(tmp_path, _cfg("a2a_unknown", max_turns=2), adapter)
+    report = _run_in(tmp_path, _cfg("a2a_unknown", max_turns=2), adapter)
 
-    turns = _checkpoint_turns(tmp_path, "a2a_unknown")
-    assert turns, "Turns must still be checkpointed"
-    for t in turns:
-        assert t.decision == "PARSE_FAIL", (
-            f"Silent telemetry must yield UNKNOWN/PARSE_FAIL, got {t.decision!r}"
-        )
-        assert t.decision != "STAY"
-        assert t.reason.startswith("UNKNOWN:")
+    # No TurnResult was emitted and the scenario was not scored
+    assert _checkpoint_turns(tmp_path, "a2a_unknown") == []
+    assert report["n_scenarios"] == 0
+    results_path = tmp_path / "results" / "a2a_unknown.jsonl"
+    assert not results_path.exists() or results_path.read_text().strip() == ""
+
+    # The loss is still auditable as a failure record in the checkpoint file
+    raw_lines = [
+        json.loads(l) for l in
+        (tmp_path / "checkpoints" / "a2a_unknown.jsonl").read_text().splitlines()
+        if l.strip()
+    ]
+    failures = [r for r in raw_lines if r.get("_failure")]
+    assert failures and failures[0]["turn"] == 1
+    assert "no telemetry spans" in failures[0]["error"]
+
+    # Next run with healthy telemetry completes the scenario cleanly
+    agent.drop_spans = False
+    report2 = _run_in(tmp_path, _cfg("a2a_unknown", max_turns=2), adapter)
+    turns = sorted(_checkpoint_turns(tmp_path, "a2a_unknown"), key=lambda t: t.turn)
+    assert [t.turn for t in turns] == [1, 2]
+    assert all(t.decision == "STAY" for t in turns)
+    assert report2["n_scenarios"] == 1
 
 
 # ── 3. Stateful resumption: redo from turn 1, fresh contextId (must-fix 2) ────

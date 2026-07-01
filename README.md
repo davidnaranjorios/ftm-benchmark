@@ -168,10 +168,12 @@ span-name substrings).
 Key behaviors:
 
 - **Async telemetry**: spans are read by polling the in-process collector with
-  a per-trace timeout. Zero spans in the window → **UNKNOWN** (recorded as
-  `PARSE_FAIL` with an `UNKNOWN:` reason so metrics exclude the turn) — never
-  STAY by default. STAY requires at least one span proving the pipeline is
-  alive.
+  a per-trace timeout. Zero spans in the window → `TelemetryLostError`: the
+  runner emits **no TurnResult**, aborts the scenario unscored (a `_failure`
+  audit record lands in the checkpoint), and redoes it on the next run —
+  never STAY by default, and never `PARSE_FAIL` (reserved for behavioral
+  failures: the agent responded but its decision was unparseable). STAY
+  requires at least one span proving the pipeline is alive.
 - **Stateful resumption**: A2A agents hold history server-side, so an
   interrupted scenario is **redone from turn 1 with a fresh contextId** rather
   than continued mid-way (`stateful = True`; the checkpoint keeps the last
