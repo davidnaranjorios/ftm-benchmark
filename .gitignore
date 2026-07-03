@@ -1,2 +1,6 @@
 __pycache__/
 *.py[cod]
+ftm_benchmark.egg-info/
+*.egg-info/
+dist/
+build/
