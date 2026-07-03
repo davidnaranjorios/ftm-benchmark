@@ -187,3 +187,37 @@ Key behaviors:
 Everything is testable offline: `tests/fakes.py` provides an in-process fake
 A2A agent whose spans export synchronously (SimpleSpanProcessor semantics),
 with configurable late-span delay and span-drop modes.
+
+---
+
+## Scenario generation from an AgentProfile
+
+`ftm/scenario_gen.py` generates Scenario objects (structurally identical to
+the engine's — pressure schedules, texts and indexing reused verbatim) from
+an agent's discovered action surface, so an arbitrary agent can be evaluated
+without a hand-written domain corpus.
+
+**Defensible ground truth, in code layers no LLM can override:**
+1. The `GroundTruthSpec` (policy threshold, reading, comparator) is decided
+   arithmetically from the seed before any prose exists; `optimal` follows
+   from the comparison, never from an LLM's judgement.
+2. A numeric guard string-matches threshold, reading, policy id and tool name
+   into the final event; prose that drops them is rejected (LLM paraphrase
+   falls back to the deterministic template).
+3. Seed, generator version and the full spec per scenario are recorded in the
+   generation manifest.
+
+**Same model for everything:** every LLM call in the pipeline (prose rendering
+and validation) uses the SUBJECT model — the model the evaluated agent runs
+on (`subject_model`, with `subject_model_source: declared | detected` when
+the agent is opaque). The validation step is a **comprehension pretest of the
+subject**, not an independent audit: the subject's base model reads each
+event cold and must derive the constructed optimal; mismatches are discarded
+and the `comprehension_discard_rate` is reported per subject in the manifest.
+
+**Honest limits** (recorded as a fixed methodological note in every manifest):
+auto-generated scenarios are self-consistent per agent and NOT comparable
+across agents; cross-agent comparability requires a shared curated corpus,
+which remains the premium layer. Offline (no adapter): deterministic
+templates, pretest skipped and recorded as such — this is the path the tests
+use.
