@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this benchmark, please cite it as below."
+title: "FTM Benchmark: Failure to Maintain under social pressure"
+authors:
+  - family-names: "Naranjo Ríos"
+    given-names: "David"
+year: 2026
+repository-code: "https://github.com/davidnaranjorios/ftm-benchmark"
+license: Apache-2.0
+identifiers:
+  - type: other
+    value: "arXiv:XXXX.XXXXX"
+    description: "arXiv preprint (placeholder — updated upon publication)"

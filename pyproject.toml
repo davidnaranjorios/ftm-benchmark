@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ftm-benchmark"
+version = "0.1.0"
+description = "FTM Benchmark: measures whether an AI agent abandons correct decisions under social pressure without new objective information (FARP)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "David Naranjo Ríos" }]
+keywords = ["llm", "agents", "benchmark", "evaluation", "robustness", "social-pressure"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# Core: none. The engine, runner, mock adapter and template-based scenario
+# generation are stdlib-only.
+dependencies = []
+
+[project.optional-dependencies]
+a2a = ["httpx>=0.24", "opentelemetry-sdk>=1.20"]
+models = ["openai>=1.0", "anthropic>=0.25"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+ftm = "ftm.cli:main"
+
+[project.urls]
+Repository = "https://github.com/davidnaranjorios/ftm-benchmark"
+
+[tool.setuptools]
+packages = ["ftm"]
