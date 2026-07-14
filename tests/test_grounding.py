@@ -18,7 +18,9 @@ from ftm.engine import (
 )
 from ftm.grounding.santander import (
     CELLS,
+    CORE_PAIRS,
     DETERMINISTIC_ANCHORS,
+    SUPPLEMENTARY_STRESSED_ONLY_PAIRS,
     PolicyAnchor,
     SantanderGroundedGenerator,
     build_pack,
@@ -84,7 +86,7 @@ def test_provenance_recorded_per_scenario():
 
 
 def test_manifest_declares_grounding_and_exclusions():
-    m = _gen().generate(n_per_cell=2).manifest
+    m = _gen().generate(n_per_cell=8).manifest
     g = m["grounding"]
     assert g["ambiguous_layer_excluded"] is True
     assert "credit_amount" in g["reading_pool_exclusions"]
@@ -96,14 +98,23 @@ def test_manifest_declares_grounding_and_exclusions():
 
 # ── (3) 2x2 design ────────────────────────────────────────────────────────────
 
+def _core_records(manifest: dict) -> list[dict]:
+    return [r for r in manifest["scenarios"] if r["grounding_cell"] is not None]
+
+
+def _supp_records(manifest: dict) -> list[dict]:
+    return [r for r in manifest["scenarios"] if r["grounding_cell"] is None]
+
+
 def test_2x2_labels_all_four_cells():
-    result = _gen().generate(n_per_cell=4)
+    result = _gen().generate(n_per_cell=8)
     counts = result.manifest["design_2x2"]["cell_counts"]
     assert set(counts) == set("ABCD")
-    assert all(v == 4 for v in counts.values())
-    for rec in result.manifest["scenarios"]:
+    assert all(v == 8 for v in counts.values())
+    for rec in _core_records(result.manifest):
         cell = rec["grounding_cell"]
         assert rec["grounding_axes"] == CELLS[cell]
+        assert rec["supplementary_stressed_only"] is False
         # data axis consistent with the SGCD shock of the source record
         if rec["grounding_axes"]["data_condition"] == "clean":
             assert rec["sgcd_shock"] == "F0"
@@ -112,9 +123,9 @@ def test_2x2_labels_all_four_cells():
 
 
 def test_pressure_axis_maps_to_schedule_category():
-    result = _gen().generate(n_per_cell=4)
+    result = _gen().generate(n_per_cell=8)
     by_id = {s.scenario_id: s for s in result.scenarios}
-    for rec in result.manifest["scenarios"]:
+    for rec in _core_records(result.manifest):
         scenario = by_id[rec["scenario_id"]]
         if rec["grounding_axes"]["social_pressure"] == "low":
             assert scenario.schedule_category == "control"
@@ -122,18 +133,74 @@ def test_pressure_axis_maps_to_schedule_category():
             assert scenario.schedule_category != "control"
 
 
+def test_anchor_composition_identical_across_cells():
+    """The (anchor, condition) multiset must be IDENTICAL in A, B, C, D —
+    otherwise the clean/stressed axis is confounded with anchor type."""
+    result = _gen().generate(n_per_cell=8)
+    multisets: dict[str, list[tuple[str, str]]] = {c: [] for c in CELLS}
+    for rec in _core_records(result.manifest):
+        spec = rec["ground_truth_spec"]
+        multisets[rec["grounding_cell"]].append(
+            (spec["policy_id"], "act" if spec["optimal"] == "ACT" else "stay")
+        )
+    reference = sorted(multisets["A"])
+    assert reference == sorted(CORE_PAIRS)
+    for cell in "BCD":
+        assert sorted(multisets[cell]) == reference, cell
+    # 50/50 stay/act within every cell
+    for cell, pairs in multisets.items():
+        n_act = sum(1 for _, cond in pairs if cond == "act")
+        assert n_act * 2 == len(pairs), cell
+
+
+def test_core_pairs_feasible_in_all_cells():
+    """No completeness-ACT pair (infeasible on clean F0 records) may be in
+    the 2x2 core pool."""
+    anchors = {a.rule_id: a for a in DETERMINISTIC_ANCHORS}
+    for rule_id, condition in CORE_PAIRS:
+        anchor = anchors[rule_id]
+        assert not (anchor.metric == "completeness" and condition == "act"), (
+            rule_id, condition,
+        )
+    assert ("DET-08", "stay") not in CORE_PAIRS
+    assert ("DET-08", "act") not in CORE_PAIRS
+
+
+def test_supplementary_set_labelled_and_outside_2x2():
+    result = _gen().generate(n_per_cell=8)
+    supp = _supp_records(result.manifest)
+    assert len(supp) == 2 * len(SUPPLEMENTARY_STRESSED_ONLY_PAIRS)
+    for rec in supp:
+        assert rec["supplementary_stressed_only"] is True
+        assert rec["grounding_cell"] is None
+        assert rec["grounding_axes"] is None
+        assert rec["sgcd_shock"] != "F0"  # stressed records only
+    block = result.manifest["supplementary_stressed_only"]
+    assert block["n_scenarios"] == len(supp)
+    assert sorted(map(tuple, block["pairs"])) == sorted(
+        SUPPLEMENTARY_STRESSED_ONLY_PAIRS
+    )
+    rule = result.manifest["design_2x2"]["anchor_composition_rule"]
+    assert "held constant across cells" in rule
+
+
+def test_n_per_cell_must_preserve_composition():
+    with pytest.raises(ValueError, match="multiple"):
+        _gen().generate(n_per_cell=6)
+
+
 # ── (4) Determinism ───────────────────────────────────────────────────────────
 
 def test_same_seed_same_specs():
-    a = _gen(seed=7).generate(n_per_cell=4)
-    b = _gen(seed=7).generate(n_per_cell=4)
+    a = _gen(seed=7).generate(n_per_cell=8)
+    b = _gen(seed=7).generate(n_per_cell=8)
     assert a.manifest["scenarios"] == b.manifest["scenarios"]
     assert [s.event for s in a.scenarios] == [s.event for s in b.scenarios]
 
 
 def test_different_seed_different_readings():
-    a = _gen(seed=1).generate(n_per_cell=4)
-    b = _gen(seed=2).generate(n_per_cell=4)
+    a = _gen(seed=1).generate(n_per_cell=8)
+    b = _gen(seed=2).generate(n_per_cell=8)
     ra = [r["ground_truth_spec"]["reading"] for r in a.manifest["scenarios"]]
     rb = [r["ground_truth_spec"]["reading"] for r in b.manifest["scenarios"]]
     assert ra != rb
@@ -165,7 +232,7 @@ def test_default_anchors_are_all_deterministic():
 
 def test_agent_profile_tools_replace_default_vocabulary():
     tools = ["freeze_account", "notify_compliance"]
-    result = SantanderGroundedGenerator(tool_names=tools).generate(n_per_cell=2)
+    result = SantanderGroundedGenerator(tool_names=tools).generate(n_per_cell=8)
     used = {r["ground_truth_spec"]["tool_name"] for r in result.manifest["scenarios"]}
     assert used <= set(tools)
     assert result.manifest["tool_vocabulary"] == tools
