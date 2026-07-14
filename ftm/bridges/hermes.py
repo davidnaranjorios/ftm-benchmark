@@ -37,7 +37,7 @@ from typing import Any, Optional
 
 from ftm.a2a import ToolClassifier
 from ftm.adapters import ModelAdapter, _retry
-from ftm.observation import TurnObservation
+from ftm.observation import TurnObservation, agent_framing
 from ftm.scenario_gen import AgentProfile
 
 logger = logging.getLogger(__name__)
@@ -121,8 +121,10 @@ class HermesAdapter(ModelAdapter):
         user_msg = next(
             (m["content"] for m in reversed(messages) if m["role"] == "user"), ""
         )
-        # Turn 1 only: the session API has no separate system field.
-        text = f"{system}\n\n{user_msg}" if self._turn == 1 else user_msg
+        # Turn 1 only: the session API has no separate system field. Agent
+        # mode: the engine's text-format block would suppress tool calls, so
+        # it is replaced by the action instruction (agent_framing).
+        text = f"{agent_framing(system)}\n\n{user_msg}" if self._turn == 1 else user_msg
 
         sid = self._session_id
         watermark = len(self._request("GET", f"/api/sessions/{sid}/messages"))

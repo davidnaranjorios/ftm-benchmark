@@ -38,7 +38,7 @@ import time
 import uuid
 from typing import Callable, Optional, Protocol
 
-from ftm.observation import TelemetryLostError, TurnObservation
+from ftm.observation import TelemetryLostError, TurnObservation, agent_framing
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +268,11 @@ class A2AAgentAdapter:
         )
         trace_id = uuid.uuid4().hex
 
-        result = self.transport.send(self._context_id, trace_id, system, user_msg)
+        # Agent mode: strip the engine's text-format block (it suppresses
+        # tool calls); decisions here come from spans, not parsed text.
+        result = self.transport.send(
+            self._context_id, trace_id, agent_framing(system), user_msg
+        )
         response_text = result.get("text", "")
 
         spans = self.collector.poll(trace_id, timeout_s=self.span_timeout_s)

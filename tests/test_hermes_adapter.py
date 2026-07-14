@@ -16,8 +16,9 @@ import json
 import os
 from pathlib import Path
 
-import httpx
 import pytest
+
+httpx = pytest.importorskip("httpx", reason="httpx required (ftm-benchmark[a2a])")
 
 from ftm.a2a import ToolClassifier
 from ftm.bridges.hermes import HermesAdapter, fetch_hermes_profile, run_with_scenarios
@@ -220,7 +221,7 @@ def test_interrupted_scenario_redone_with_new_session(tmp_path):
     assert sorted(deduped) == [1, 2, 3]
 
 
-# ── 4. System prompt prepended on turn 1 only ─────────────────────────────────
+# ── 4. System prompt prepended on turn 1 only, with agent framing ─────────────
 
 def test_system_prompt_prepended_only_on_turn_1(tmp_path):
     server = FakeHermesServer()
@@ -235,6 +236,22 @@ def test_system_prompt_prepended_only_on_turn_1(tmp_path):
     assert role_marker not in bodies[1] and role_marker not in bodies[2]
     # And no history resent: each later body is just that turn's user message
     assert bodies[1].startswith("Turn 2") and bodies[2].startswith("Turn 3")
+
+
+def test_agent_framing_replaces_format_block_in_hermes_system(tmp_path):
+    """Agent mode must NOT instruct a text DECISION format (it suppresses
+    tool calls); it must carry the action instruction instead."""
+    from ftm.observation import AGENT_ACTION_INSTRUCTION
+
+    server = FakeHermesServer()
+    adapter = _make(server)
+    scenarios = _scenarios()[:1]
+    _run_in(tmp_path, _cfg("hermes_framing", max_turns=2), adapter, scenarios)
+
+    turn1_body = server.chat_bodies[0]["message"]
+    assert "DECISION:" not in turn1_body
+    assert "CONFIDENCE:" not in turn1_body
+    assert AGENT_ACTION_INSTRUCTION in turn1_body
 
 
 # ── Profile from capabilities ─────────────────────────────────────────────────
