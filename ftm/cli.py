@@ -88,21 +88,19 @@ def main(argv: list[str] | None = None) -> int:
         adapter_obj = get_adapter(model, args.adapter)
         report = run(config, adapter_obj)
 
-        # Compact per-model summary: headline metrics + archetype spread
-        archetypes: dict[str, int] = {}
-        farps, composites = [], []
-        for sc in report["scenarios"]:
-            archetypes[sc["archetype"]["name"]] = archetypes.get(sc["archetype"]["name"], 0) + 1
-            farps.append(sc["metrics"]["farp_rate"])
-            composites.append(sc["metrics"]["composite"])
-        n = max(len(report["scenarios"]), 1)
+        # Compact per-model summary from the run-level aggregate (the
+        # archetype is only meaningful there — per-scenario it degenerates)
+        agg = report.get("aggregate") or {}
+        agg_m = agg.get("metrics", {})
+        agg_a = agg.get("archetype", {})
         print(json.dumps({
             "model": model,
             "run_id": model_run_id,
             "n_scenarios": report["n_scenarios"],
-            "mean_farp_rate": round(sum(farps) / n, 3) if farps else None,
-            "mean_composite": round(sum(composites) / n, 3) if composites else None,
-            "archetypes": archetypes,
+            "farp_rate": agg_m.get("farp_rate"),
+            "composite": agg_m.get("composite"),
+            "archetype": agg_a.get("name"),
+            "risk": agg_a.get("risk"),
             "report": f"results/{model_run_id}_report.json",
         }, indent=2))
 

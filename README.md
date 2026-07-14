@@ -1,8 +1,9 @@
 # FTM Benchmark
 
+<!-- TODO: insert the exact FARP acronym expansion from the paper -->
 **Measures whether your AI agent abandons correct decisions under social
-pressure without new objective information (FARP — False Action under
-Retained Premises).**
+pressure without new objective information — the FARP rate: the share of
+stay-optimal scenarios where the agent falsely acted under pressure.**
 
 ## Quickstart — offline, no API key
 
@@ -17,15 +18,19 @@ Real output (trimmed):
 {
   "model": "mock",
   "n_scenarios": 30,
-  "mean_farp_rate": 0.1,
-  "mean_composite": 0.56,
-  "archetypes": { "Sudden Collapse": 30 },
-  "report": "results/20260703_200608_mock_report.json"
+  "farp_rate": 0.2,
+  "composite": 0.86,
+  "archetype": "Pressure Resistant",
+  "risk": "minimal",
+  "report": "results/20260714_184812_mock_report.json"
 }
 ```
 
 That run used the built-in deterministic mock adapter: 30 scenarios ×
 10 turns of escalating social pressure, full metrics, zero tokens spent.
+The archetype is diagnosed once per run, over the aggregate of all turns —
+a single scenario carries only one condition, so per-scenario archetypes
+would be statistically meaningless.
 
 ## Evaluate YOUR agent (A2A)
 
@@ -36,22 +41,38 @@ OpenTelemetry spans (GenAI semantic conventions: `gen_ai.operation.name ==
 ```python
 from ftm.a2a import A2AAgentAdapter, HttpA2ATransport, InProcessSpanCollector
 from ftm.scenario_gen import AgentProfile, ScenarioGenerator
-from ftm.runner import RunConfig, run
+from ftm.runner import RunConfig, run_with_scenarios
 
-collector = InProcessSpanCollector()          # point OTLP export here
+collector = InProcessSpanCollector()                 # point your OTLP export here
 transport = HttpA2ATransport("https://your-agent.example.com")  # reads the Agent Card
 adapter = A2AAgentAdapter(transport, collector)
 
-# Scenarios grounded on the agent's own action surface
-profile = AgentProfile(name="your-agent", tools=adapter.classifier.export())
-scenarios = ScenarioGenerator(
-    profile,
-    subject_model="gpt-4o",           # the model your agent runs on (declared)
-    subject_model_source="declared",
-).generate(tier="standard")
+# Declare the agent's tool surface up front (or reuse a ToolClassifier.export()
+# from a previous run); tools that first appear mid-run are classified lazily.
+profile = AgentProfile(name="your-agent", tools={
+    "transfer_funds": {"classification": "ACTION", "description": "Move funds now."},
+    "check_portfolio_status": {"classification": "READ", "description": "Read state."},
+})
+gen = ScenarioGenerator(profile, subject_model="gpt-4o", subject_model_source="declared")
+scenarios = gen.generate(tier="snapshot").scenarios
 
-report = run(RunConfig(models=["your-agent"], run_id="agent-eval"), adapter)
-# → results/agent-eval_report.json : FARP, composite, archetype per scenario
+report = run_with_scenarios(
+    RunConfig(models=["your-agent"], tier="snapshot", run_id="agent-eval"),
+    adapter, scenarios,
+)
+print(report["aggregate"]["archetype"]["name"])
+```
+
+Real output of this exact flow against the test suite's in-process fake agent
+(configured to capitulate on turn 3 of every scenario):
+
+```json
+{
+  "n_scenarios": 5,
+  "farp_rate": 1.0,
+  "archetype": "Staircase Erosion",
+  "risk": "high"
+}
 ```
 
 ## How it works

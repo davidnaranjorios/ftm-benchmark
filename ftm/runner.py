@@ -166,6 +166,8 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
     )
 
     all_results: list[dict] = []
+    all_turns: list[TurnResult] = []  # run-level aggregate (archetype needs
+    # both conditions; per-scenario metrics have act_acc=0 by construction)
 
     for scenario in scenarios:
         # Map of already-done turns for this scenario
@@ -183,6 +185,7 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
                 _append_scenario_result(config.run_id, record)
                 completed_scenario_ids.add(scenario.scenario_id)
             all_results.append(record)
+            all_turns.extend(turn_results)
             logger.debug("[%s] %s — skipped (complete)", config.run_id, scenario.scenario_id)
             continue
 
@@ -293,20 +296,22 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
                 _append_scenario_result(config.run_id, record)
                 completed_scenario_ids.add(scenario.scenario_id)
             all_results.append(record)
+            all_turns.extend(turn_results)
             logger.info(
-                "[%s] %s — done (%d turns, archetype=%s)",
+                "[%s] %s — done (%d turns)",
                 config.run_id,
                 scenario.scenario_id,
                 len(turn_results),
-                record["archetype"]["name"],
             )
 
-    return _write_final_report(config, all_results)
+    return _write_final_report(config, all_results, all_turns)
 
 
 def _build_scenario_record(scenario: Scenario, turn_results: list[TurnResult]) -> dict:
+    # No per-scenario archetype: a single scenario has one condition, so
+    # DIS degenerates to 0 and detect_archetype falls through to the default.
+    # The archetype is reported once, at run level (report["aggregate"]).
     metrics = compute_metrics(turn_results)
-    archetype = detect_archetype(metrics)
     return {
         "scenario_id": scenario.scenario_id,
         "domain": scenario.domain,
@@ -316,17 +321,32 @@ def _build_scenario_record(scenario: Scenario, turn_results: list[TurnResult]) -
         "optimal": scenario.optimal,
         "n_turns": len(turn_results),
         "metrics": dataclasses.asdict(metrics),
-        "archetype": dataclasses.asdict(archetype),
     }
 
 
-def _write_final_report(config: RunConfig, all_results: list[dict]) -> dict:
+def _write_final_report(
+    config: RunConfig, all_results: list[dict], all_turns: list[TurnResult]
+) -> dict:
+    # Run-level aggregate: the archetype is only meaningful here. Per-scenario
+    # metrics have act_acc=0 (or stay_acc=0) by construction — a scenario has
+    # a single condition — so per-scenario detect_archetype degenerates to the
+    # default. The aggregate spans both conditions.
+    aggregate = None
+    if all_turns:
+        agg_metrics = compute_metrics(all_turns)
+        agg_archetype = detect_archetype(agg_metrics)
+        aggregate = {
+            "metrics": dataclasses.asdict(agg_metrics),
+            "archetype": dataclasses.asdict(agg_archetype),
+        }
+
     report = {
         "run_id": config.run_id,
         "models": config.models,
         "tier": config.tier,
         "domain": config.domain,
         "n_scenarios": len(all_results),
+        "aggregate": aggregate,
         "scenarios": all_results,
     }
 
@@ -340,7 +360,6 @@ def _write_final_report(config: RunConfig, all_results: list[dict]) -> dict:
         flat: list[dict] = []
         for r in all_results:
             m = r["metrics"]
-            a = r["archetype"]
             flat.append({
                 "scenario_id": r["scenario_id"],
                 "domain": r["domain"],
@@ -355,8 +374,6 @@ def _write_final_report(config: RunConfig, all_results: list[dict]) -> dict:
                 "composite": m.get("composite"),
                 "farp_rate": m.get("farp_rate"),
                 "inaction_rate": m.get("inaction_rate"),
-                "archetype": a.get("name"),
-                "risk": a.get("risk"),
             })
         with csv_path.open("w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=list(flat[0].keys()))
@@ -365,6 +382,21 @@ def _write_final_report(config: RunConfig, all_results: list[dict]) -> dict:
         logger.info("CSV written to %s", csv_path)
 
     return report
+
+
+def run_with_scenarios(config: RunConfig, adapter: ModelAdapter, scenarios) -> dict:
+    """
+    Execute run() over an explicit scenario list (e.g. AgentProfile-generated)
+    instead of the engine's built-in corpus. Swaps the generate_scenarios
+    symbol for the duration of the call; run() itself is unchanged.
+    """
+    global generate_scenarios
+    original = generate_scenarios
+    generate_scenarios = lambda tier=None, domain=None: list(scenarios)  # noqa: E731
+    try:
+        return run(config, adapter)
+    finally:
+        generate_scenarios = original
 
 
 # ── CLI entry point ───────────────────────────────────────────────────────────

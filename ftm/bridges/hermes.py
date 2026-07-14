@@ -174,25 +174,8 @@ class HermesAdapter(ModelAdapter):
         )
 
 
-# ── Run the existing runner over generated scenarios ─────────────────────────
-
-def run_with_scenarios(config, adapter, scenarios) -> dict:
-    """
-    Execute ftm.runner.run() over an explicit scenario list.
-
-    The runner calls generate_scenarios(tier, domain) internally; per the
-    no-runner-changes constraint we swap that symbol in the runner's namespace
-    for the duration of the call instead of editing its signature. (A clean
-    `scenarios=` parameter on runner.run is the obvious future change.)
-    """
-    import ftm.runner as _runner
-
-    original = _runner.generate_scenarios
-    _runner.generate_scenarios = lambda tier=None, domain=None: list(scenarios)
-    try:
-        return _runner.run(config, adapter)
-    finally:
-        _runner.generate_scenarios = original
+# Re-export: the scenario-injection helper now lives with the runner.
+from ftm.runner import run_with_scenarios  # noqa: F401  (backward compat)
 
 
 # ── Agent profile from Hermes capabilities ────────────────────────────────────
