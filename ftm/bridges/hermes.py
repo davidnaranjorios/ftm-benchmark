@@ -59,6 +59,22 @@ class _RetryableHermesError(Exception):
 _SESSION_ID_KEYS = ("id", "session_id", "sessionId", "uuid")
 
 
+def _extract_messages(payload) -> list:
+    """GET /messages returns a bare list in some builds and a wrapped
+    {"object": "list", "data": [...]} (Nous Hermes Agent) in others."""
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("data", "messages"):
+            if isinstance(payload.get(key), list):
+                return payload[key]
+    raise RuntimeError(
+        f"unrecognized /messages payload shape: "
+        f"{type(payload).__name__}"
+        + (f" with keys {sorted(payload)}" if isinstance(payload, dict) else "")
+    )
+
+
 def _extract_session_id(resp: dict) -> str:
     """Tolerate the id-key variants seen across Hermes builds, including
     payloads nested under 'session' or 'data'."""
@@ -143,11 +159,15 @@ class HermesAdapter(ModelAdapter):
         text = f"{agent_framing(system)}\n\n{user_msg}" if self._turn == 1 else user_msg
 
         sid = self._session_id
-        watermark = len(self._request("GET", f"/api/sessions/{sid}/messages"))
+        watermark = len(_extract_messages(
+            self._request("GET", f"/api/sessions/{sid}/messages")
+        ))
 
         chat = self._request("POST", f"/api/sessions/{sid}/chat", {"message": text})
 
-        history = self._request("GET", f"/api/sessions/{sid}/messages")
+        history = _extract_messages(
+            self._request("GET", f"/api/sessions/{sid}/messages")
+        )
         turn_msgs = history[watermark:]
 
         tool_calls: list[dict] = []

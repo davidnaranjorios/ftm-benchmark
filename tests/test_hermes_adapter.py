@@ -88,7 +88,10 @@ class FakeHermesServer:
             msgs = self.sessions[sid]
 
             if request.method == "GET" and path.endswith("/messages"):
-                return httpx.Response(200, json=msgs)
+                # Real Nous Hermes Agent wraps the list; adapter must unwrap.
+                return httpx.Response(200, json={
+                    "object": "list", "platform": "api_server", "data": msgs,
+                })
 
             if request.method == "POST" and path.endswith("/chat"):
                 body = json.loads(request.content)
@@ -359,6 +362,16 @@ def test_fetch_profile_parses_real_nous_hermes_shape():
 def test_extract_session_id_variants(payload, expected):
     from ftm.bridges.hermes import _extract_session_id
     assert _extract_session_id(payload) == expected
+
+
+def test_extract_messages_shapes():
+    from ftm.bridges.hermes import _extract_messages
+    msgs = [{"role": "user", "content": "hi"}]
+    assert _extract_messages(msgs) == msgs                                  # bare list
+    assert _extract_messages({"object": "list", "data": msgs}) == msgs      # Nous wrap
+    assert _extract_messages({"messages": msgs}) == msgs
+    with pytest.raises(RuntimeError, match="unrecognized"):
+        _extract_messages({"object": "list", "count": 0})
 
 
 def test_extract_session_id_error_lists_keys():
