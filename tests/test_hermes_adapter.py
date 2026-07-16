@@ -32,10 +32,20 @@ class FakeHermesServer:
 
     act_turns: user-turn numbers (per session) on which the agent calls the
     ACTION tool 'terminal'; other turns call the READ tool 'read_file'.
+    capabilities_has_toolsets=False mimics Nous Research's Hermes Agent:
+    /v1/capabilities responds without 'toolsets'; /v1/toolsets has them
+    (toolsets_shape: 'wrapped' {"toolsets":[...]} or 'bare' [...]).
     """
 
-    def __init__(self, act_turns: set[int] = frozenset()):
+    def __init__(
+        self,
+        act_turns: set[int] = frozenset(),
+        capabilities_has_toolsets: bool = True,
+        toolsets_shape: str = "wrapped",
+    ):
         self.act_turns = set(act_turns)
+        self.capabilities_has_toolsets = capabilities_has_toolsets
+        self.toolsets_shape = toolsets_shape
         self.sessions: dict[str, list[dict]] = {}   # id -> messages
         self.user_turns: dict[str, int] = {}
         self.chat_bodies: list[dict] = []           # every /chat body, for asserts
@@ -53,14 +63,23 @@ class FakeHermesServer:
             self.user_turns[sid] = 0
             return httpx.Response(200, json={"id": sid})
 
+        toolsets_payload = [{
+            "name": "core",
+            "tools": [
+                {"name": "terminal", "description": "Run a shell command."},
+                {"name": "read_file", "description": "Read a file's contents."},
+            ],
+        }]
+
         if request.method == "GET" and path == "/v1/capabilities":
-            return httpx.Response(200, json={"toolsets": [{
-                "name": "core",
-                "tools": [
-                    {"name": "terminal", "description": "Run a shell command."},
-                    {"name": "read_file", "description": "Read a file's contents."},
-                ],
-            }]})
+            if self.capabilities_has_toolsets:
+                return httpx.Response(200, json={"toolsets": toolsets_payload})
+            return httpx.Response(200, json={"version": "1.0", "features": ["chat"]})
+
+        if request.method == "GET" and path == "/v1/toolsets":
+            if self.toolsets_shape == "bare":
+                return httpx.Response(200, json=toolsets_payload)
+            return httpx.Response(200, json={"toolsets": toolsets_payload})
 
         if path.startswith("/api/sessions/"):
             sid = path.split("/")[3]
@@ -266,3 +285,35 @@ def test_fetch_profile_from_capabilities():
     assert profile.tools["terminal"]["classification"] == "ACTION"
     assert profile.tools["read_file"]["classification"] == "READ"
     assert profile.action_tools() == ["terminal"]
+
+
+@pytest.mark.parametrize("shape", ["wrapped", "bare"])
+def test_fetch_profile_falls_back_to_v1_toolsets(shape):
+    """Nous Research's Hermes Agent: /v1/capabilities has no 'toolsets';
+    /v1/toolsets does (either {'toolsets': [...]} or a bare list)."""
+    server = FakeHermesServer(capabilities_has_toolsets=False, toolsets_shape=shape)
+    profile = fetch_hermes_profile(
+        "http://hermes.test", "k",
+        classifier=ToolClassifier(judge=_judge),
+        client=httpx.Client(transport=server.transport()),
+    )
+    assert profile.action_tools() == ["terminal"]
+    assert profile.tools["read_file"]["classification"] == "READ"
+
+
+def test_fetch_profile_errors_when_both_sources_empty():
+    class NoToolsServer(FakeHermesServer):
+        def handler(self, request):
+            if request.url.path == "/v1/capabilities":
+                return httpx.Response(200, json={"version": "1.0"})
+            if request.url.path == "/v1/toolsets":
+                return httpx.Response(404, json={"error": "not found"})
+            return super().handler(request)
+
+    server = NoToolsServer()
+    with pytest.raises(RuntimeError, match="tools-file"):
+        fetch_hermes_profile(
+            "http://hermes.test", "k",
+            classifier=ToolClassifier(judge=_judge),
+            client=httpx.Client(transport=server.transport()),
+        )

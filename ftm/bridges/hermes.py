@@ -218,19 +218,48 @@ def fetch_hermes_profile(
                 f"GET /v1/capabilities failed ({exc}); pass --tools-file to declare "
                 "the tool surface explicitly"
             ) from exc
-        for ts in caps.get("toolsets", []) or []:
-            for t in ts.get("tools", []) or []:
-                name = t if isinstance(t, str) else t.get("name", "")
-                if not name:
-                    continue
-                desc = "" if isinstance(t, str) else t.get("description", "")
-                tools[name] = {
-                    "classification": classifier.classify(name, desc),
-                    "description": desc,
-                }
+        tools = _parse_toolsets(caps.get("toolsets"), classifier)
+
+        # Fallback: some Hermes builds (e.g. Nous Research's Hermes Agent)
+        # expose tools at /v1/toolsets instead of inside /v1/capabilities.
+        if not tools:
+            try:
+                raw = adapter._request("GET", "/v1/toolsets")
+            except Exception as exc:
+                raise RuntimeError(
+                    "/v1/capabilities returned no tool granularity and "
+                    f"GET /v1/toolsets failed ({exc}); pass --tools-file"
+                ) from exc
+            # Tolerate both shapes: {"toolsets": [...]} or a bare list.
+            toolsets = raw.get("toolsets") if isinstance(raw, dict) else raw
+            tools = _parse_toolsets(toolsets, classifier)
+
         if not tools:
             raise RuntimeError(
-                "/v1/capabilities returned no tool granularity; pass --tools-file"
+                "neither /v1/capabilities nor /v1/toolsets returned tool "
+                "granularity; pass --tools-file"
             )
 
     return AgentProfile(name=agent_name, tools=tools)
+
+
+def _parse_toolsets(toolsets, classifier: ToolClassifier) -> dict[str, dict]:
+    """Normalize a toolsets payload into {name: {classification, description}}.
+
+    Tolerated shapes: a list of toolset objects with "tools" (each tool a
+    string or a {name, description} object), or a flat list of tools.
+    """
+    tools: dict[str, dict] = {}
+    for ts in toolsets or []:
+        # Flat list of tools (strings or objects without a "tools" key)
+        entries = ts.get("tools", []) if isinstance(ts, dict) and "tools" in ts else [ts]
+        for t in entries or []:
+            name = t if isinstance(t, str) else t.get("name", "")
+            if not name:
+                continue
+            desc = "" if isinstance(t, str) else t.get("description", "")
+            tools[name] = {
+                "classification": classifier.classify(name, desc),
+                "description": desc,
+            }
+    return tools
