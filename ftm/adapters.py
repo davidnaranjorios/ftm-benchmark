@@ -70,15 +70,19 @@ def _retry(fn, retryable_types: tuple, max_attempts: int = 5, base_delay: float 
 # ── OpenAI ────────────────────────────────────────────────────────────────────
 
 class OpenAIAdapter(ModelAdapter):
-    def __init__(self, model: str = "gpt-4o"):
+    """OpenAI client — also serves any OpenAI-compatible endpoint (xAI,
+    OpenRouter, ...) via base_url + api_key."""
+
+    def __init__(self, model: str = "gpt-4o", base_url: str | None = None,
+                 api_key: str | None = None):
         try:
             import openai as _oai
         except ImportError:
             raise ImportError("pip install openai")
-        api_key = os.environ.get("OPENAI_API_KEY")
+        api_key = api_key or os.environ.get("OPENAI_API_KEY")
         if not api_key:
             raise EnvironmentError("OPENAI_API_KEY is not set")
-        self._client = _oai.OpenAI(api_key=api_key)
+        self._client = _oai.OpenAI(api_key=api_key, base_url=base_url)
         self.model = model
 
     def complete(self, system: str, messages: list[dict]) -> dict[str, Any]:
@@ -184,14 +188,24 @@ class MockAdapter(ModelAdapter):
 
 # ── Factory ───────────────────────────────────────────────────────────────────
 
-def get_adapter(model: str, adapter: str = "auto") -> ModelAdapter:
+def get_adapter(
+    model: str,
+    adapter: str = "auto",
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> ModelAdapter:
     """
     Resolve a ModelAdapter from a model name and an optional adapter hint.
 
     adapter values: "auto" | "openai" | "anthropic" | "mock"
+    base_url: any OpenAI-compatible endpoint (xAI, OpenRouter, ...). With
+    "auto", grok / "x-ai/..." models resolve to xAI (XAI_API_KEY) or, failing
+    that, OpenRouter (OPENROUTER_API_KEY).
     """
     if adapter == "mock":
         return MockAdapter()
+    if base_url:
+        return OpenAIAdapter(model=model, base_url=base_url, api_key=api_key)
     if adapter == "openai" or (
         adapter == "auto"
         and (model.startswith("gpt-") or model.startswith("o1") or model.startswith("o3"))
@@ -199,6 +213,23 @@ def get_adapter(model: str, adapter: str = "auto") -> ModelAdapter:
         return OpenAIAdapter(model=model)
     if adapter == "anthropic" or (adapter == "auto" and model.startswith("claude-")):
         return AnthropicAdapter(model=model)
+    if adapter == "auto" and (model.startswith("x-ai/") or model.startswith("grok")):
+        xai_key = api_key or os.environ.get("XAI_API_KEY")
+        if xai_key:
+            return OpenAIAdapter(
+                model=model.split("/", 1)[-1],           # xAI ids have no vendor prefix
+                base_url=os.environ.get("XAI_BASE_URL", "https://api.x.ai/v1"),
+                api_key=xai_key,
+            )
+        or_key = os.environ.get("OPENROUTER_API_KEY")
+        if or_key:
+            return OpenAIAdapter(
+                model=model, base_url="https://openrouter.ai/api/v1", api_key=or_key,
+            )
+        raise EnvironmentError(
+            f"model {model!r} needs XAI_API_KEY or OPENROUTER_API_KEY "
+            "(or an explicit base_url/api_key)"
+        )
     raise ValueError(
         f"Cannot infer adapter for model {model!r}. "
         "Pass --adapter openai|anthropic|mock explicitly."

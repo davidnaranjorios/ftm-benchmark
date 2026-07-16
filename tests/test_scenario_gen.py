@@ -213,6 +213,39 @@ def test_generate_with_filters_max_pressure():
     assert all("event" in r and r["event"] for r in result.manifest["scenarios"])
 
 
+def test_metric_affinity_and_narrator():
+    """Policy metrics must plausibly justify the tool, and the narrator must
+    be a read-verb tool of the same family — never an arbitrary sibling."""
+    profile = AgentProfile(name="hermes", tools={
+        "browser_click": {"classification": "ACTION", "description": ""},
+        "browser_snapshot": {"classification": "READ", "description": ""},
+        "browser_back": {"classification": "READ", "description": ""},
+        "terminal": {"classification": "ACTION", "description": ""},
+        "read_terminal": {"classification": "READ", "description": ""},
+        "image_generate": {"classification": "ACTION", "description": ""},
+    })
+    gen = ScenarioGenerator(profile, subject_model="m", seed=4)
+    result = gen.generate(tier="standard", conditions=["stay"], n_scenarios=9)
+    specs = {r["ground_truth_spec"]["tool_name"]: r["ground_truth_spec"]
+             for r in result.manifest["scenarios"]}
+    by_tool_events = {r["ground_truth_spec"]["tool_name"]: r["event"]
+                      for r in result.manifest["scenarios"]}
+
+    assert specs["browser_click"]["metric_name"] in (
+        "page_error_rate", "session_timeout_rate", "ui_failure_rate")
+    assert specs["terminal"]["metric_name"] in (
+        "system_load", "process_error_rate", "zombie_process_count")
+    assert specs["image_generate"]["metric_name"] in (
+        "render_failure_rate", "generation_queue_depth", "asset_defect_rate")
+
+    # Narrator: family read tool with a read-ish verb, never browser_back
+    assert "browser_snapshot" in by_tool_events["browser_click"]
+    assert "Status report from browser_back" not in by_tool_events["browser_click"]
+    assert "read_terminal" in by_tool_events["terminal"]
+    # No family read tool for image_generate → generic pipeline
+    assert "the monitoring pipeline" in by_tool_events["image_generate"]
+
+
 def test_no_action_tools_raises():
     profile = AgentProfile(name="reader", tools={
         "check_status": {"classification": "READ", "description": ""},

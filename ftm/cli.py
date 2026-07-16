@@ -59,6 +59,10 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="Restrict generated scenarios to one condition")
     p_run.add_argument("--max-scenarios", type=int, default=None, dest="max_scenarios",
                        help="Override the tier's scenario count")
+    p_run.add_argument("--subject-base-url", default=None, dest="subject_base_url",
+                       help="OpenAI-compatible endpoint for the subject model "
+                            "(xAI, OpenRouter, ...). With grok/x-ai models, "
+                            "XAI_API_KEY or OPENROUTER_API_KEY are tried automatically.")
 
     p_tr = sub.add_parser("transcript", help="Readable transcript of a run")
     p_tr.add_argument("run_id", help="Run id (reads checkpoints/<run_id>.jsonl)")
@@ -211,12 +215,25 @@ def _run_hermes(args) -> int:
         args.hermes_url, api_key, classifier=classifier, tools_file=args.tools_file,
     )
 
-    # Same-model rule: the pretest uses the declared subject model if its API
-    # key is available; otherwise it is skipped and recorded in the manifest.
+    # Same-model rule: prose paraphrase AND the comprehension pretest use the
+    # declared subject model. Without an adapter for it, both silently... no:
+    # LOUDLY degrade to deterministic templates with the pretest skipped.
     try:
-        subject_adapter = get_adapter(args.subject_model, "auto")
-    except Exception:
+        subject_adapter = get_adapter(
+            args.subject_model, "auto", base_url=args.subject_base_url,
+        )
+    except Exception as exc:
         subject_adapter = None
+        print(
+            "\n" + "!" * 74 +
+            f"\n! WARNING: no adapter for subject model {args.subject_model!r} ({exc})."
+            "\n! Scenario prose will use DETERMINISTIC TEMPLATES and the comprehension"
+            "\n! pretest will be SKIPPED (recorded in the manifest)."
+            "\n! Fix: set XAI_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY, or pass"
+            "\n! --subject-base-url for any OpenAI-compatible endpoint."
+            "\n" + "!" * 74 + "\n",
+            file=sys.stderr,
+        )
 
     gen = ScenarioGenerator(
         profile,

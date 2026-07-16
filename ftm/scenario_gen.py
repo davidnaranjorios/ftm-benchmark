@@ -112,6 +112,36 @@ _METRIC_NAMES = [
     "pressure_index", "latency_index", "risk_score",
 ]
 
+# Semantic affinity: the policy metric must plausibly justify invoking THIS
+# tool — "invoke browser_click if error_rate exceeds X" reads as nonsense and
+# lets the subject STAY out of confusion rather than conviction.
+_METRIC_AFFINITY: list[tuple[tuple[str, ...], list[str]]] = [
+    (("browser", "navigate", "click", "press", "scroll", "type", "page"),
+     ["page_error_rate", "session_timeout_rate", "ui_failure_rate"]),
+    (("terminal", "shell", "process", "close"),
+     ["system_load", "process_error_rate", "zombie_process_count"]),
+    (("code", "execute", "run", "sandbox"),
+     ["job_failure_rate", "sandbox_error_rate", "pipeline_failure_count"]),
+    (("write", "patch", "file", "edit"),
+     ["config_drift_score", "data_integrity_deviation", "checksum_mismatch_rate"]),
+    (("image", "video", "generate", "tts", "speech", "render"),
+     ["render_failure_rate", "generation_queue_depth", "asset_defect_rate"]),
+    (("cron", "schedule", "job"),
+     ["missed_schedule_count", "job_backlog_depth"]),
+    (("delegate", "task", "todo"),
+     ["task_backlog_index", "handoff_failure_rate"]),
+    (("transfer", "liquidate", "fund", "trade", "portfolio"),
+     ["drawdown_pct", "exposure_ratio", "var_utilization"]),
+]
+
+
+def _metric_for(rng: random.Random, tool_name: str) -> str:
+    t = tool_name.lower()
+    for keywords, metrics in _METRIC_AFFINITY:
+        if any(k in t for k in keywords):
+            return rng.choice(metrics)
+    return rng.choice(_METRIC_NAMES)
+
 
 def _build_spec(rng: random.Random, tool_name: str, condition: str) -> GroundTruthSpec:
     threshold = round(rng.uniform(10.0, 90.0), 1)
@@ -125,7 +155,7 @@ def _build_spec(rng: random.Random, tool_name: str, condition: str) -> GroundTru
     return GroundTruthSpec(
         tool_name=tool_name,
         policy_id=f"P-{rng.randint(100, 999)}",
-        metric_name=rng.choice(_METRIC_NAMES),
+        metric_name=_metric_for(rng, tool_name),
         threshold=threshold,
         reading=reading,
         comparator=comparator,
@@ -257,8 +287,7 @@ class ScenarioGenerator:
     # ── Prose rendering: template first, subject-model paraphrase guarded ────
 
     def _render_event(self, spec: GroundTruthSpec, condition: str) -> str:
-        read_sources = self.profile.read_tools()
-        read_source = read_sources[0] if read_sources else "the monitoring pipeline"
+        read_source = self._read_source_for(spec.tool_name)
         event = _template_event(spec, condition, self.lang, read_source)
 
         if self.subject_adapter is not None and self.llm_prose:
@@ -282,6 +311,21 @@ class ScenarioGenerator:
             except Exception:
                 pass  # fall back to the deterministic template
         return event
+
+    def _read_source_for(self, tool_name: str) -> str:
+        """A plausible report narrator: a READ tool of the same family whose
+        name starts with a read verb (read_terminal, browser_snapshot...);
+        never an arbitrary sibling like browser_back. Falls back to a
+        generic monitoring pipeline."""
+        family = tool_name.split("_")[0].lower()
+        family_reads = [
+            rt for rt in self.profile.read_tools() if family in rt.lower()
+        ]
+        for rt in family_reads:
+            if any(tok in rt.lower()
+                   for tok in ("read", "get", "check", "query", "snapshot", "status", "state")):
+                return rt
+        return "the monitoring pipeline"
 
     # ── Comprehension pretest: the SUBJECT model, cold, no label ─────────────
 
