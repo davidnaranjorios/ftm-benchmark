@@ -349,6 +349,24 @@ def test_fetch_profile_parses_real_nous_hermes_shape():
     assert profile.tools["read_file"]["description"] == "read, write, patch, search"
 
 
+@pytest.mark.parametrize("payload,expected", [
+    ({"id": "s1"}, "s1"),
+    ({"session_id": "s2"}, "s2"),
+    ({"sessionId": "s3"}, "s3"),
+    ({"session": {"id": "s4"}}, "s4"),
+    ({"data": {"session_id": "s5"}}, "s5"),
+])
+def test_extract_session_id_variants(payload, expected):
+    from ftm.bridges.hermes import _extract_session_id
+    assert _extract_session_id(payload) == expected
+
+
+def test_extract_session_id_error_lists_keys():
+    from ftm.bridges.hermes import _extract_session_id
+    with pytest.raises(RuntimeError, match="top-level keys"):
+        _extract_session_id({"object": "session", "created_at": "now"})
+
+
 def test_fetch_profile_errors_when_both_sources_empty():
     class NoToolsServer(FakeHermesServer):
         def handler(self, request):

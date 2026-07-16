@@ -56,6 +56,22 @@ class _RetryableHermesError(Exception):
     """5xx or transport error — retried with the shared backoff helper."""
 
 
+_SESSION_ID_KEYS = ("id", "session_id", "sessionId", "uuid")
+
+
+def _extract_session_id(resp: dict) -> str:
+    """Tolerate the id-key variants seen across Hermes builds, including
+    payloads nested under 'session' or 'data'."""
+    for container in (resp, resp.get("session") or {}, resp.get("data") or {}):
+        for key in _SESSION_ID_KEYS:
+            if container.get(key):
+                return str(container[key])
+    raise RuntimeError(
+        f"could not find a session id in POST /api/sessions response; "
+        f"top-level keys: {sorted(resp)}"
+    )
+
+
 class HermesAdapter(ModelAdapter):
     stateful = True
 
@@ -109,7 +125,7 @@ class HermesAdapter(ModelAdapter):
 
     def begin_scenario(self, scenario_id: str) -> None:
         resp = self._request("POST", "/api/sessions", {})
-        self._session_id = str(resp["id"])
+        self._session_id = _extract_session_id(resp)
         self._turn = 0
         logger.info("Hermes session %s for scenario %s", self._session_id, scenario_id)
 
