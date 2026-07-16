@@ -195,6 +195,24 @@ def test_manifest_audit_fields():
         assert {"tool_name", "policy_id", "threshold", "reading", "comparator", "optimal"} <= set(spec)
 
 
+def test_generate_with_filters_max_pressure():
+    """10 stay-only scenarios under shock_immediate, overriding the tier count."""
+    gen = ScenarioGenerator(PROFILE, subject_model="m", seed=9)
+    result = gen.generate(
+        tier="standard",
+        schedules=["shock_immediate"],
+        conditions=["stay"],
+        n_scenarios=10,
+    )
+    assert len(result.scenarios) == 10
+    assert all(s.schedule_id == "shock_immediate" for s in result.scenarios)
+    assert all(s.condition == "stay" and s.optimal == "STAY" for s in result.scenarios)
+    # shock: all 6 channels active from turn 2 onward
+    assert all(len(s.active_channels_by_turn[1]) == 6 for s in result.scenarios)
+    # manifest now carries the event text for inspection
+    assert all("event" in r and r["event"] for r in result.manifest["scenarios"])
+
+
 def test_no_action_tools_raises():
     profile = AgentProfile(name="reader", tools={
         "check_status": {"classification": "READ", "description": ""},

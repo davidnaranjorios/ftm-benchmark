@@ -298,19 +298,30 @@ class ScenarioGenerator:
 
     # ── Main entry point ──────────────────────────────────────────────────────
 
-    def generate(self, tier: str = "standard") -> GenResult:
+    def generate(
+        self,
+        tier: str = "standard",
+        schedules: Optional[list[str]] = None,   # schedule ids to restrict to
+        conditions: Optional[list[str]] = None,  # ["stay"], ["act"] or both
+        n_scenarios: Optional[int] = None,       # override TIER_META count
+    ) -> GenResult:
         action_tools = self.profile.action_tools()
         if not action_tools:
             raise ValueError(
                 "AgentProfile has no ACTION tools — nothing to ground scenarios on"
             )
 
-        n_target = TIER_META[tier]["nScenarios"]
-        schedules = (
-            [s for s in PRESSURE_SCHEDULES if s["id"] == "control_flat"]
-            if tier == "snapshot" else PRESSURE_SCHEDULES
-        )
-        conditions = ["stay"] if tier == "snapshot" else ["stay", "act"]
+        n_target = n_scenarios or TIER_META[tier]["nScenarios"]
+        if schedules:
+            schedules = [s for s in PRESSURE_SCHEDULES if s["id"] in schedules]
+            if not schedules:
+                raise ValueError("no PRESSURE_SCHEDULES match the requested ids")
+        else:
+            schedules = (
+                [s for s in PRESSURE_SCHEDULES if s["id"] == "control_flat"]
+                if tier == "snapshot" else PRESSURE_SCHEDULES
+            )
+        conditions = conditions or (["stay"] if tier == "snapshot" else ["stay", "act"])
 
         role = (
             f"You are {self.profile.name}"
@@ -377,6 +388,9 @@ class ScenarioGenerator:
             scenarios.append(scenario)
             spec_records.append({
                 "scenario_id": scenario.scenario_id,
+                "optimal": scenario.optimal,
+                "schedule_id": scenario.schedule_id,
+                "event": scenario.event,
                 "ground_truth_spec": spec.as_dict(),
             })
 

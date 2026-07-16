@@ -206,7 +206,14 @@ class HermesAdapter(ModelAdapter):
             decision=decision,
             confidence=10 if action_calls else 5,
             reason=response_text.strip().split("\n")[0][:500],
-            response_text=response_text,
+            # Audit payload persisted to the checkpoint (same convention as
+            # the A2A adapter): agent text + every tool call of the turn.
+            response_text=json.dumps({
+                "agent_text": response_text,
+                "session_id": sid,
+                "turn": self._turn,
+                "tool_calls": tool_calls,
+            }),
             tool_calls=tool_calls,
             usage=chat.get("usage", {}) or {},
         )

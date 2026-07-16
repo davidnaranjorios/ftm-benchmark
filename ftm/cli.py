@@ -51,11 +51,27 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="Declared model the Hermes agent runs on (required with --hermes-url)")
     p_run.add_argument("--tools-file", default=None, dest="tools_file",
                        help="JSON list declaring the tool surface when /v1/capabilities lacks granularity")
+    # Generation filters (agent evaluation)
+    p_run.add_argument("--schedule", default=None,
+                       choices=["control_flat", "ramp_emot_lead", "shock_immediate"],
+                       help="Restrict generated scenarios to one pressure schedule")
+    p_run.add_argument("--condition", default=None, choices=["stay", "act"],
+                       help="Restrict generated scenarios to one condition")
+    p_run.add_argument("--max-scenarios", type=int, default=None, dest="max_scenarios",
+                       help="Override the tier's scenario count")
+
+    p_tr = sub.add_parser("transcript", help="Readable transcript of a run")
+    p_tr.add_argument("run_id", help="Run id (reads checkpoints/<run_id>.jsonl)")
+    p_tr.add_argument("--full", action="store_true",
+                      help="Print full agent text instead of a 300-char excerpt")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+
+    if args.command == "transcript":
+        return _transcript(args)
 
     if args.hermes_url:
         return _run_hermes(args)
@@ -107,6 +123,65 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _transcript(args) -> int:
+    """Readable per-scenario transcript from the checkpoint (+ manifest)."""
+    from pathlib import Path
+
+    cp = Path("checkpoints") / f"{args.run_id}.jsonl"
+    if not cp.exists():
+        print(f"error: {cp} not found", file=sys.stderr)
+        return 2
+
+    # Scenario events from the generation manifest, if present
+    events: dict[str, dict] = {}
+    mp = Path("results") / f"{args.run_id}_scenario_manifest.json"
+    if mp.exists():
+        manifest = json.loads(mp.read_text())
+        events = {r["scenario_id"]: r for r in manifest.get("scenarios", [])}
+
+    turns_by_scenario: dict[str, list[dict]] = {}
+    failures: list[dict] = []
+    for line in cp.read_text().splitlines():
+        if not line.strip():
+            continue
+        rec = json.loads(line)
+        if rec.get("_failure"):
+            failures.append(rec)
+            continue
+        turns_by_scenario.setdefault(rec["scenario_id"], []).append(rec)
+
+    limit = None if args.full else 300
+    for sid, turns in turns_by_scenario.items():
+        # keep-last dedup, same rule as the runner
+        deduped = {t["turn"]: t for t in sorted(turns, key=lambda t: t["turn"])}
+        print(f"\n{'=' * 78}\nSCENARIO {sid}")
+        meta = events.get(sid)
+        if meta:
+            print(f"optimal={meta['optimal']}  schedule={meta['schedule_id']}")
+            print(f"\nEVENT:\n{meta['event']}")
+        for t in sorted(deduped):
+            rec = deduped[t]
+            try:
+                payload = json.loads(rec["raw_response"])
+                text = payload.get("agent_text", "")
+                tools = payload.get("tool_calls", [])
+            except (ValueError, TypeError):
+                text, tools = rec["raw_response"], []
+            mark = "OK " if rec["is_correct"] else "XX "
+            tool_str = ", ".join(
+                f"{tc['name']}[{tc.get('classification', '?')}]" for tc in tools
+            ) or "-"
+            body = text if limit is None else text[:limit] + ("…" if len(text) > limit else "")
+            print(f"\n[{mark}] turn {t}  decision={rec['decision']}  "
+                  f"channels={rec['n_active_channels']}  tools: {tool_str}")
+            print(f"      {body}")
+    if failures:
+        print(f"\n{'=' * 78}\nFAILURE RECORDS ({len(failures)}):")
+        for f in failures:
+            print(f"  {f['scenario_id']} turn {f['turn']}: {f['error']}")
+    return 0
+
+
 def _run_hermes(args) -> int:
     """Evaluate a stock Hermes via its session API (lazy imports: httpx path)."""
     import os
@@ -149,7 +224,12 @@ def _run_hermes(args) -> int:
         subject_model_source="declared",
         subject_adapter=subject_adapter,
     )
-    result = gen.generate(tier=args.tier)
+    result = gen.generate(
+        tier=args.tier,
+        schedules=[args.schedule] if args.schedule else None,
+        conditions=[args.condition] if args.condition else None,
+        n_scenarios=args.max_scenarios,
+    )
 
     manifest = result.manifest
     manifest["observation_mode"] = HERMES_OBSERVATION_MODE
