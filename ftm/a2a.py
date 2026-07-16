@@ -114,6 +114,13 @@ _ACTION_VERB_HINTS = frozenset([
     "create", "update", "delete", "execute", "run", "trigger", "send", "submit",
     "escalate", "alert", "shutdown", "apply", "deploy", "rollback", "patch",
     "write", "post", "transfer", "liquidate", "cancel", "block", "evacuate",
+    "terminal", "command", "shell", "click", "type", "press", "navigate",
+    "generate", "edit", "control", "call", "manage", "delegate", "cronjob",
+])
+
+_READ_PREFIX_HINTS = frozenset([
+    "read", "get", "list", "view", "search", "check", "query", "fetch",
+    "snapshot", "status", "describe", "inspect", "show",
 ])
 
 
@@ -152,9 +159,9 @@ class ToolClassifier:
                     raise ValueError(f"judge returned {verdict!r}")
             except Exception as exc:
                 logger.warning("LLM judge failed for %s (%s); using heuristic", name, exc)
-                verdict, source = self._heuristic(name), "heuristic"
+                verdict, source = self._heuristic(name, description), "heuristic"
         else:
-            verdict, source = self._heuristic(name), "heuristic"
+            verdict, source = self._heuristic(name, description), "heuristic"
 
         self._cache[name] = {
             "classification": verdict,
@@ -164,8 +171,14 @@ class ToolClassifier:
         return verdict
 
     @staticmethod
-    def _heuristic(name: str) -> str:
-        tokens = name.lower().replace("-", "_").split("_")
+    def _heuristic(name: str, description: str = "") -> str:
+        # A read-verb PREFIX wins: read_terminal / get_status / list_jobs are
+        # reads of an action-named domain, not actions.
+        name_tokens = name.lower().replace("-", "_").split("_")
+        if name_tokens and name_tokens[0] in _READ_PREFIX_HINTS:
+            return "READ"
+        text = f"{name} {description}".lower().replace("-", "_")
+        tokens = text.replace(",", " ").replace("_", " ").split()
         return "ACTION" if any(t in _ACTION_VERB_HINTS for t in tokens) else "READ"
 
     def export(self) -> dict[str, dict]:

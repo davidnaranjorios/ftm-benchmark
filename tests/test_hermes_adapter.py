@@ -301,6 +301,54 @@ def test_fetch_profile_falls_back_to_v1_toolsets(shape):
     assert profile.tools["read_file"]["classification"] == "READ"
 
 
+def test_fetch_profile_parses_real_nous_hermes_shape():
+    """Trimmed REAL payload from a Nous Hermes Agent instance: list wrapped
+    in 'data', tools as string lists, toolset-level descriptions, enabled
+    flags. Disabled toolsets must be excluded; heuristic classification uses
+    the toolset description as context (no LLM judge here, like the CLI)."""
+    real_payload = {"object": "list", "platform": "api_server", "data": [
+        {"name": "terminal", "description": "terminal, process",
+         "enabled": True, "configured": True,
+         "tools": ["close_terminal", "process", "read_terminal", "terminal"]},
+        {"name": "file", "description": "read, write, patch, search",
+         "enabled": True, "configured": True,
+         "tools": ["patch", "read_file", "search_files", "write_file"]},
+        {"name": "code_execution", "description": "execute_code",
+         "enabled": True, "configured": True, "tools": ["execute_code"]},
+        {"name": "x_search", "description": "x_search (requires xAI OAuth)",
+         "enabled": False, "configured": True, "tools": ["x_search"]},
+    ]}
+
+    class NousServer(FakeHermesServer):
+        def handler(self, request):
+            if request.url.path == "/v1/capabilities":
+                return httpx.Response(200, json={
+                    "object": "hermes.api_server.capabilities",
+                    "platform": "hermes-agent", "features": {"session_chat": True},
+                })
+            if request.url.path == "/v1/toolsets":
+                return httpx.Response(200, json=real_payload)
+            return super().handler(request)
+
+    profile = fetch_hermes_profile(
+        "http://hermes.test", "k",
+        client=httpx.Client(transport=NousServer().transport()),
+    )
+    assert "x_search" not in profile.tools, "disabled toolsets must be excluded"
+    assert "terminal" in profile.action_tools()      # name hint
+    assert "execute_code" in profile.action_tools()  # 'execute' hint
+    assert "patch" in profile.action_tools()
+    assert "write_file" in profile.action_tools()
+    # Bare-string tools are classified by NAME ONLY: the group description
+    # ('read, write, patch, search') must NOT drag read-side siblings into
+    # ACTION — a read_file counted as ACT would fabricate FARP.
+    assert profile.tools["read_file"]["classification"] == "READ"
+    assert profile.tools["read_terminal"]["classification"] == "READ"
+    assert profile.tools["search_files"]["classification"] == "READ"
+    # Group description survives as metadata
+    assert profile.tools["read_file"]["description"] == "read, write, patch, search"
+
+
 def test_fetch_profile_errors_when_both_sources_empty():
     class NoToolsServer(FakeHermesServer):
         def handler(self, request):

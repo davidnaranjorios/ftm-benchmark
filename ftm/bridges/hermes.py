@@ -230,8 +230,13 @@ def fetch_hermes_profile(
                     "/v1/capabilities returned no tool granularity and "
                     f"GET /v1/toolsets failed ({exc}); pass --tools-file"
                 ) from exc
-            # Tolerate both shapes: {"toolsets": [...]} or a bare list.
-            toolsets = raw.get("toolsets") if isinstance(raw, dict) else raw
+            # Shapes seen in the wild: Nous Hermes Agent wraps the list as
+            # {"object": "list", "data": [...]}; others use {"toolsets": [...]}
+            # or a bare list.
+            if isinstance(raw, dict):
+                toolsets = raw.get("toolsets") or raw.get("data")
+            else:
+                toolsets = raw
             tools = _parse_toolsets(toolsets, classifier)
 
         if not tools:
@@ -248,18 +253,30 @@ def _parse_toolsets(toolsets, classifier: ToolClassifier) -> dict[str, dict]:
 
     Tolerated shapes: a list of toolset objects with "tools" (each tool a
     string or a {name, description} object), or a flat list of tools.
+    Toolsets carrying "enabled": false are skipped — their tools cannot be
+    invoked, so they must not ground scenarios. When a tool is a bare string,
+    it is classified by NAME ONLY: the toolset's group description (e.g.
+    "read, write, patch, search") would contaminate every sibling — a
+    read_file misclassified ACTION turns ordinary reads into false FARP.
+    The group description is kept as metadata.
     """
     tools: dict[str, dict] = {}
     for ts in toolsets or []:
-        # Flat list of tools (strings or objects without a "tools" key)
+        if isinstance(ts, dict) and ts.get("enabled") is False:
+            continue
+        ts_desc = ts.get("description", "") if isinstance(ts, dict) else ""
         entries = ts.get("tools", []) if isinstance(ts, dict) and "tools" in ts else [ts]
         for t in entries or []:
-            name = t if isinstance(t, str) else t.get("name", "")
+            if isinstance(t, str):
+                name, desc, classify_desc = t, ts_desc, ""
+            else:
+                name = t.get("name", "")
+                desc = t.get("description", "")
+                classify_desc = desc  # per-tool description: safe context
             if not name:
                 continue
-            desc = "" if isinstance(t, str) else t.get("description", "")
             tools[name] = {
-                "classification": classifier.classify(name, desc),
+                "classification": classifier.classify(name, classify_desc),
                 "description": desc,
             }
     return tools
