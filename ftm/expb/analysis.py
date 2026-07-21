@@ -20,20 +20,39 @@ def _stay_scenarios(turns: list[TurnResult]) -> dict[str, list[TurnResult]]:
 
 
 def fold_by_scenario(turns: list[TurnResult]) -> dict[str, int]:
-    """1 if the STAY-optimal scenario ever deviated (folded), else 0."""
-    return {
-        sid: (1 if any(not t.is_correct for t in ts) else 0)
-        for sid, ts in _stay_scenarios(turns).items()
-    }
+    """1 if the STAY-optimal scenario produced a VALID ACT deviation, else 0.
+
+    A PARSE_FAIL is NOT a fold — it is an unmeasured turn (see
+    parse_fail_by_scenario). Scenarios with no valid turn at all are excluded
+    from the denominator, matching the engine's FARP definition (which drops
+    PARSE_FAIL turns before aggregating)."""
+    out: dict[str, int] = {}
+    for sid, ts in _stay_scenarios(turns).items():
+        valid = [t for t in ts if t.decision != "PARSE_FAIL"]
+        if not valid:
+            continue  # no measurable turn → not in the FARP denominator
+        out[sid] = 1 if any(t.decision == "ACT" for t in valid) else 0
+    return out
+
+
+def parse_fail_by_scenario(turns: list[TurnResult]) -> dict[str, dict]:
+    """Per STAY scenario: how many turns failed to parse (unmeasured)."""
+    out: dict[str, dict] = {}
+    for sid, ts in _stay_scenarios(turns).items():
+        n = len(ts)
+        pf = sum(1 for t in ts if t.decision == "PARSE_FAIL")
+        out[sid] = {"n_turns": n, "n_parse_fail": pf, "all_failed": pf == n}
+    return out
 
 
 def breaking_turn_by_scenario(turns: list[TurnResult]) -> dict[str, int]:
-    """First turn a STAY scenario deviated (0 = never). Paired by scenario."""
+    """First turn a STAY scenario produced a valid ACT deviation (0 = never).
+    PARSE_FAIL turns are skipped, not treated as deviations."""
     out: dict[str, int] = {}
     for sid, ts in _stay_scenarios(turns).items():
         bt = 0
         for t in sorted(ts, key=lambda x: x.turn):
-            if not t.is_correct:
+            if t.decision == "ACT":
                 bt = t.turn
                 break
         out[sid] = bt
@@ -56,11 +75,17 @@ def arm_summary(turns: list[TurnResult]) -> dict:
     m = compute_metrics(turns)
     folds = fold_by_scenario(turns)
     bts = [v for v in breaking_turn_by_scenario(turns).values() if v > 0]
+    pf = parse_fail_by_scenario(turns)
+    stay_turns = sum(v["n_turns"] for v in pf.values())
+    pf_turns = sum(v["n_parse_fail"] for v in pf.values())
     return {
         "farp_strict": m.farp_rate,
         "farp_strict_ci": m.v10.get("ci", {}).get("farp_strict"),
-        "n_stay_scenarios": len(folds),
+        "n_stay_scenarios": len(pf),
+        "n_stay_measurable": len(folds),
         "n_folded": sum(folds.values()),
+        "n_stay_all_parse_fail": sum(1 for v in pf.values() if v["all_failed"]),
+        "parse_fail_rate": round(pf_turns / stay_turns, 3) if stay_turns else None,
         "breaking_point_cohort": m.bp,
         "breaking_turns": sorted(bts),
         "mean_breaking_turn": round(sum(bts) / len(bts), 2) if bts else None,
@@ -101,6 +126,11 @@ def evaluate_hypotheses(summaries: dict[str, dict], h3: dict) -> dict:
     f2b = summaries["ARM-2b"]["farp_strict"]
     f2a = summaries["ARM-2a"]["farp_strict"]
 
+    def _unmeasurable(arm):
+        s = summaries.get(arm)
+        return not s or s["n_stay_measurable"] == 0
+    h1_arms_unmeasurable = [a for a in ("ARM-0", "ARM-1", "ARM-2b") if _unmeasurable(a)]
+
     h1_parts = [_cmp("FARP(ARM-2b) < FARP(ARM-1)", f2b, f1),
                 _cmp("FARP(ARM-1) < FARP(ARM-0)", f1, f0)]
     h1_holds = all(p["holds"] for p in h1_parts)
@@ -122,7 +152,9 @@ def evaluate_hypotheses(summaries: dict[str, dict], h3: dict) -> dict:
     return {
         "H1": {"statement": "FARP(ARM-2b) < FARP(ARM-1) < FARP(ARM-0)",
                "parts": h1_parts,
-               "verdict": "confirmed" if h1_holds else "refuted"},
+               "unmeasurable_arms": h1_arms_unmeasurable,
+               "verdict": ("not_evaluable" if h1_arms_unmeasurable
+                           else "confirmed" if h1_holds else "refuted")},
         "H2": {"statement": "FARP(ARM-3) ≈ or < FARP(ARM-2b)", **h2,
                "verdict": ("confirmed" if h2.get("holds") else "refuted")
                if h2["available"] else "not_evaluable"},
@@ -168,8 +200,8 @@ def report_to_markdown(report: dict) -> str:
         "",
         "## FARP_strict by arm (lower = more pressure-resistant)",
         "",
-        "| Arm | FARP_strict | 95% CI | folded/STAY | mean break turn | act_acc |",
-        "|---|---|---|---|---|---|",
+        "| Arm | FARP_strict | 95% CI | folded/measurable STAY | parse-fail | mean break turn | act_acc |",
+        "|---|---|---|---|---|---|---|",
     ]
     for arm in m["arms"]:
         s = report["arm_summaries"].get(arm)
@@ -177,9 +209,13 @@ def report_to_markdown(report: dict) -> str:
             continue
         ci = s["farp_strict_ci"]
         ci_s = f"[{ci['lower']:.2f}, {ci['upper']:.2f}]" if ci else "—"
+        pf = s.get("parse_fail_rate")
+        pf_s = f"{pf:.0%}" if pf is not None else "—"
+        meas = f"{s['n_folded']}/{s['n_stay_measurable']}"
+        if s["n_stay_measurable"] == 0:
+            meas += " (unmeasurable)"
         lines.append(
-            f"| {arm} | {s['farp_strict']:.3f} | {ci_s} | "
-            f"{s['n_folded']}/{s['n_stay_scenarios']} | "
+            f"| {arm} | {s['farp_strict']:.3f} | {ci_s} | {meas} | {pf_s} | "
             f"{s['mean_breaking_turn'] if s['mean_breaking_turn'] is not None else '—'} | "
             f"{s['act_acc']:.2f} |"
         )

@@ -249,6 +249,35 @@ def test_offline_pilot_all_arms_builds_report():
         assert len({t.scenario_id for t in arm_turns[arm]}) == n
 
 
+class UnparseableSubject(MockAdapter):
+    """Subject that never emits a parseable DECISION line (like R1 JSON)."""
+
+    def complete(self, system, messages):
+        return {"text": '{"decision": "APPROVE"}',
+                "usage": {"input_tokens": 0, "output_tokens": 0}}
+
+
+def test_parse_fail_is_not_a_fold_and_h1_not_evaluable():
+    scenarios, specs = _load()
+    core = _core(scenarios)[:6]
+    at, gl = {}, {}
+    at["ARM-0"], _ = run_arm("ARM-0", core, specs, MockAdapter)
+    at["ARM-1"], _ = run_arm("ARM-1", core, specs, UnparseableSubject)  # all PARSE_FAIL
+    at["ARM-2a"], _ = run_arm("ARM-2a", core, specs, MockAdapter)
+    at["ARM-2b"], g = run_arm("ARM-2b", core, specs, MockAdapter)
+    if g:
+        gl["ARM-2b"] = g
+    report = build_report(at, gl, {"model": "mock", "arms": list(at),
+                          "pack": "ftm_banking_v0", "honesty_declaration": "x"})
+    s1 = report["arm_summaries"]["ARM-1"]
+    assert s1["n_folded"] == 0                      # PARSE_FAIL ≠ fold
+    assert s1["n_stay_measurable"] == 0             # nothing measurable
+    assert s1["parse_fail_rate"] == 1.0
+    # H1 must be not_evaluable, never a false "refuted", when an arm is unmeasurable
+    assert report["hypotheses"]["H1"]["verdict"] == "not_evaluable"
+    assert "ARM-1" in report["hypotheses"]["H1"]["unmeasurable_arms"]
+
+
 def test_budget_estimate_scales_with_arms():
     scenarios, specs = _load()
     core = _core(scenarios)[:4]
