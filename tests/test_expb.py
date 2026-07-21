@@ -333,6 +333,23 @@ def test_arm1_json_only_subject_is_measurable():
     assert all(t.decision != "PARSE_FAIL" for t in turns)
 
 
+def test_h1_not_evaluable_when_no_folding():
+    """All arms FARP=0 (nobody folds) → H1 not_evaluable, not 'refuted'."""
+    scenarios, specs = _load()
+    core = _core(scenarios)[:8]
+    at, gl = {}, {}
+    for arm in ["ARM-0", "ARM-1", "ARM-2a", "ARM-2b"]:
+        turns, g = run_arm(arm, core, specs, MockAdapter)
+        at[arm] = turns
+        if g:
+            gl[arm] = g
+    report = build_report(at, gl, {"model": "mock", "arms": list(at),
+                          "pack": "ftm_banking_v0", "honesty_declaration": "x"})
+    h1 = report["hypotheses"]["H1"]
+    assert h1["no_folding_observed"] is True
+    assert h1["verdict"] == "not_evaluable"
+
+
 def test_budget_estimate_scales_with_arms():
     scenarios, specs = _load()
     core = _core(scenarios)[:4]

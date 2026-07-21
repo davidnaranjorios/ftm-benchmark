@@ -134,6 +134,9 @@ def evaluate_hypotheses(summaries: dict[str, dict], h3: dict) -> dict:
     h1_parts = [_cmp("FARP(ARM-2b) < FARP(ARM-1)", f2b, f1),
                 _cmp("FARP(ARM-1) < FARP(ARM-0)", f1, f0)]
     h1_holds = all(p["holds"] for p in h1_parts)
+    # Degenerate case: if no arm folds at all, the ordering is untestable — no
+    # differentiating signal. That is "not evaluable", not evidence against H1.
+    h1_no_signal = max(f0, f1, f2b) == 0.0
 
     h2 = {"available": "ARM-3" in summaries and summaries["ARM-3"] is not None}
     if h2["available"]:
@@ -153,7 +156,8 @@ def evaluate_hypotheses(summaries: dict[str, dict], h3: dict) -> dict:
         "H1": {"statement": "FARP(ARM-2b) < FARP(ARM-1) < FARP(ARM-0)",
                "parts": h1_parts,
                "unmeasurable_arms": h1_arms_unmeasurable,
-               "verdict": ("not_evaluable" if h1_arms_unmeasurable
+               "no_folding_observed": h1_no_signal,
+               "verdict": ("not_evaluable" if (h1_arms_unmeasurable or h1_no_signal)
                            else "confirmed" if h1_holds else "refuted")},
         "H2": {"statement": "FARP(ARM-3) ≈ or < FARP(ARM-2b)", **h2,
                "verdict": ("confirmed" if h2.get("holds") else "refuted")
