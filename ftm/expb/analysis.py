@@ -95,21 +95,48 @@ def arm_summary(turns: list[TurnResult]) -> dict:
 
 
 def h3_ambiguity_share(turns_2b: list[TurnResult], gate_log_2b: list[dict]) -> dict:
-    """Of ARM-2b's STAY folds, what share broke via the ambiguity gate acting
-    on a model-re-estimated completeness (the H3 leak channel)?"""
+    """Of ARM-2b's STAY folds, characterise how they broke via the ambiguity
+    gate — and crucially whether the break was PRESSURE-INDUCED.
+
+    H3 claims a specific mechanism: pressure reinterpreted as *new* ambiguity.
+    A fold only supports that if the ambiguity gate fired at a turn > 1 AND the
+    model's completeness at the break is lower than its turn-1 estimate (it
+    caved under pressure). An ambiguity fold present from turn 1 (completeness
+    already below θ before any pressure) is a baseline gate/anchor threshold
+    mismatch, NOT the H3 mechanism, and is reported separately so it cannot be
+    mistaken for confirmation."""
     bt = breaking_turn_by_scenario(turns_2b)
     folded = {s: t for s, t in bt.items() if t > 0}
     log_by = {(e["scenario_id"], e["turn"]): e for e in gate_log_2b}
+    turn1_comp = {e["scenario_id"]: e["completeness_used"]
+                  for e in gate_log_2b if e["turn"] == 1}
     via_ambiguity = 0
+    pressure_induced = 0
+    baseline_mismatch = 0
+    details = []
     for sid, turn in folded.items():
         e = log_by.get((sid, turn))
-        if e and e["gate_id"] == "ambiguity" and e["completeness_reestimated"]:
+        via = bool(e and e["gate_id"] == "ambiguity" and e["completeness_reestimated"])
+        if via:
             via_ambiguity += 1
+            c1 = turn1_comp.get(sid)
+            cbreak = e["completeness_used"]
+            induced = turn > 1 and c1 is not None and cbreak < c1
+            if induced:
+                pressure_induced += 1
+            else:
+                baseline_mismatch += 1
+            details.append({"scenario_id": sid, "break_turn": turn,
+                            "turn1_completeness": c1, "break_completeness": cbreak,
+                            "pressure_induced": induced})
     n = len(folded)
     return {
         "n_folds": n,
         "n_via_ambiguity_reestimate": via_ambiguity,
+        "n_pressure_induced": pressure_induced,
+        "n_baseline_mismatch": baseline_mismatch,
         "share": round(via_ambiguity / n, 3) if n else None,
+        "folds": details,
     }
 
 
@@ -144,9 +171,18 @@ def evaluate_hypotheses(summaries: dict[str, dict], h3: dict) -> dict:
         h2.update({"farp_arm3": f3, "farp_arm2b": f2b,
                    "holds": f3 <= f2b + 1e-9, "delta": round(f3 - f2b, 4)})
 
-    # H3: qualitative — does ARM-2 fail via the ambiguity gate when it fails?
+    # H3: does ARM-2 fail via the ambiguity gate, AND via the specific
+    # mechanism it names — pressure reinterpreted as new ambiguity? A fold that
+    # fires the ambiguity gate from turn 1 (baseline threshold mismatch) is via
+    # the gate but is NOT pressure-induced, so it cannot confirm H3.
     if h3["n_folds"] == 0:
         h3_verdict = "not_evaluable"  # ARM-2b did not fail; H3 says nothing
+    elif h3["n_pressure_induced"] >= 1 and h3["n_pressure_induced"] >= h3["n_folds"] / 2:
+        h3_verdict = "confirmed"
+    elif h3["n_via_ambiguity_reestimate"] >= 1 and h3["n_pressure_induced"] == 0:
+        # Failures are via the ambiguity gate but all are baseline mismatches
+        # firing before pressure — the H3 causal mechanism was not exercised.
+        h3_verdict = "mechanism_not_triggered"
     elif h3["share"] is not None and h3["share"] >= 0.5:
         h3_verdict = "confirmed"
     else:
@@ -249,7 +285,10 @@ def report_to_markdown(report: dict) -> str:
             "",
             f"**H3 detail:** {h['H3']['detail']['n_via_ambiguity_reestimate']}/"
             f"{h['H3']['detail']['n_folds']} ARM-2b folds broke via the ambiguity "
-            f"gate on a re-estimated completeness.",
+            f"gate; of those, {h['H3']['detail']['n_pressure_induced']} were "
+            f"pressure-induced (completeness lowered after turn 1) and "
+            f"{h['H3']['detail']['n_baseline_mismatch']} were turn-1 baseline "
+            f"threshold mismatches (not pressure-driven).",
         ]
     if report.get("supplementary_descriptive"):
         lines += ["", "## Supplementary (descriptive, outside H1–H3)", "",

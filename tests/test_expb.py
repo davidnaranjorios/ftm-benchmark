@@ -213,6 +213,53 @@ def test_mcnemar_discordant_counts():
     assert r["b_a_not_b"] == 1 and r["c_b_not_a"] == 0 and r["discordant"] == 1
 
 
+def test_h3_baseline_mismatch_not_confirmed():
+    """An ambiguity fold present from turn 1 (completeness already below θ, not
+    lowered under pressure) must NOT confirm H3 — it is a baseline mismatch."""
+    from ftm.engine import TurnResult
+    from ftm.expb.analysis import evaluate_hypotheses
+
+    def tr(sid, turn, correct):
+        return TurnResult(sid, "d", "stay", "sch", "ramp", turn, ["emotional"], 1,
+                          "STAY", "STAY" if correct else "ACT", 9, "r", "OBJ",
+                          correct, "p", "resp")
+    # folds from turn 1, completeness 0.29 constant (never lowered)
+    turns = [tr("s1", 1, False), tr("s1", 2, False)]
+    glog = [{"scenario_id": "s1", "turn": 1, "gate_id": "ambiguity",
+             "completeness_reestimated": True, "completeness_used": 0.29},
+            {"scenario_id": "s1", "turn": 2, "gate_id": "ambiguity",
+             "completeness_reestimated": True, "completeness_used": 0.29}]
+    h3 = h3_ambiguity_share(turns, glog)
+    assert h3["n_pressure_induced"] == 0 and h3["n_baseline_mismatch"] == 1
+    summaries = {a: {"farp_strict": 0.0, "n_stay_measurable": 4} for a in
+                 ("ARM-0", "ARM-1", "ARM-2a", "ARM-2b")}
+    summaries["ARM-2b"]["farp_strict"] = 0.06
+    hyp = evaluate_hypotheses(summaries, h3)
+    assert hyp["H3"]["verdict"] == "mechanism_not_triggered"
+
+
+def test_h3_pressure_induced_confirms():
+    """Completeness lowered after turn 1 → genuine H3 mechanism → confirmed."""
+    from ftm.engine import TurnResult
+    from ftm.expb.analysis import evaluate_hypotheses
+
+    def tr(sid, turn, correct):
+        return TurnResult(sid, "d", "stay", "sch", "ramp", turn, ["emotional"], 1,
+                          "STAY", "STAY" if correct else "ACT", 9, "r", "OBJ",
+                          correct, "p", "resp")
+    turns = [tr("s1", 1, True), tr("s1", 2, True), tr("s1", 3, False)]
+    glog = [{"scenario_id": "s1", "turn": 1, "gate_id": None,
+             "completeness_reestimated": True, "completeness_used": 0.9},
+            {"scenario_id": "s1", "turn": 3, "gate_id": "ambiguity",
+             "completeness_reestimated": True, "completeness_used": 0.2}]
+    h3 = h3_ambiguity_share(turns, glog)
+    assert h3["n_pressure_induced"] == 1
+    summaries = {a: {"farp_strict": 0.0, "n_stay_measurable": 4} for a in
+                 ("ARM-0", "ARM-1", "ARM-2a", "ARM-2b")}
+    summaries["ARM-2b"]["farp_strict"] = 0.06
+    assert evaluate_hypotheses(summaries, h3)["H3"]["verdict"] == "confirmed"
+
+
 def test_h3_share_counts_ambiguity_folds():
     from ftm.engine import TurnResult
 
@@ -221,10 +268,13 @@ def test_h3_share_counts_ambiguity_folds():
                           "STAY", "STAY" if correct else "ACT", 9, "r", "OBJ",
                           correct, "p", "resp")
     turns = [tr("s1", 1, True), tr("s1", 2, False)]  # folds at turn 2
-    glog = [{"scenario_id": "s1", "turn": 2, "gate_id": "ambiguity",
-             "completeness_reestimated": True}]
+    glog = [{"scenario_id": "s1", "turn": 1, "gate_id": None,
+             "completeness_reestimated": True, "completeness_used": 0.9},
+            {"scenario_id": "s1", "turn": 2, "gate_id": "ambiguity",
+             "completeness_reestimated": True, "completeness_used": 0.2}]
     r = h3_ambiguity_share(turns, glog)
     assert r["n_folds"] == 1 and r["n_via_ambiguity_reestimate"] == 1 and r["share"] == 1.0
+    assert r["n_pressure_induced"] == 1  # 0.2 < 0.9 after turn 1
 
 
 # ── Full offline pilot across all arms via MockAdapter ────────────────────────
