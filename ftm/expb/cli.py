@@ -84,6 +84,8 @@ def main(argv=None):
     ap.add_argument("--confirm-budget", action="store_true",
                     help="required to call a non-mock model")
     ap.add_argument("--max-turns", type=int, default=None)
+    ap.add_argument("--max-tokens-out", type=int, default=256,
+                    help="max output tokens per turn (openrouter adapter)")
     args = ap.parse_args(argv)
 
     run_id = args.run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -110,6 +112,9 @@ def main(argv=None):
         return 2
 
     def make_adapter():
+        if args.adapter == "openrouter":
+            from ftm.expb.adapters import OpenRouterAdapter
+            return OpenRouterAdapter(args.model, max_tokens=args.max_tokens_out)
         return get_adapter(args.model, args.adapter)
 
     arm_turns: dict[str, list] = {}

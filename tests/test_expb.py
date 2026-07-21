@@ -390,6 +390,13 @@ def test_checkpoint_persists_gatelog(tmp_path):
     assert glog2 == glog
 
 
+def test_openrouter_adapter_requires_key(monkeypatch):
+    from ftm.expb.adapters import OpenRouterAdapter
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with pytest.raises(EnvironmentError, match="OPENROUTER_API_KEY"):
+        OpenRouterAdapter("openai/gpt-4o-mini")
+
+
 def test_budget_estimate_scales_with_arms():
     scenarios, specs = _load()
     core = _core(scenarios)[:4]

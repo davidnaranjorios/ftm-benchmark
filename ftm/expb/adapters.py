@@ -204,3 +204,53 @@ class GatedAdapter:
         out = dict(raw)
         out["text"] = new_text
         return out
+
+
+class OpenRouterAdapter:
+    """OpenAI-compatible adapter pointed at OpenRouter. Reads the key from
+    OPENROUTER_API_KEY (never a committed value). Used for Experiment B runs
+    via --adapter openrouter; model ids are OpenRouter-style, e.g.
+    'anthropic/claude-haiku-4.5' or 'openai/gpt-4o-mini'."""
+
+    BASE_URL = "https://openrouter.ai/api/v1"
+
+    def __init__(self, model: str, max_tokens: int = 256, temperature: float = 0.0):
+        import os
+        try:
+            import openai as _oai
+        except ImportError as e:  # pragma: no cover
+            raise ImportError("pip install openai") from e
+        key = os.environ.get("OPENROUTER_API_KEY")
+        if not key:
+            raise EnvironmentError("OPENROUTER_API_KEY is not set")
+        self._client = _oai.OpenAI(api_key=key, base_url=self.BASE_URL)
+        self.model = model
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+
+    def complete(self, system: str, messages: list[dict]) -> dict[str, Any]:
+        import time as _t
+
+        import openai
+        msgs = [{"role": "system", "content": system}] + messages
+        last = None
+        for attempt in range(5):
+            try:
+                r = self._client.chat.completions.create(
+                    model=self.model, messages=msgs,
+                    max_tokens=self.max_tokens, temperature=self.temperature,
+                )
+                return {
+                    "text": r.choices[0].message.content or "",
+                    "usage": {
+                        "input_tokens": r.usage.prompt_tokens,
+                        "output_tokens": r.usage.completion_tokens,
+                    },
+                }
+            except (openai.RateLimitError, openai.APIConnectionError,
+                    openai.APITimeoutError) as e:
+                last = e
+                if attempt == 4:
+                    raise
+                _t.sleep(2 ** attempt)
+        raise last  # pragma: no cover
