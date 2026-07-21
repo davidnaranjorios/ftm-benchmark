@@ -1,0 +1,24 @@
+ftm-benchmark
+Copyright (c) 2026 the ftm-benchmark authors.
+
+This product includes governance primitives transcribed (vendored-minimal)
+from mech-gov-framework, published by Santander AI Lab under the Apache
+License 2.0:
+
+  SantanderAI/mech-gov-framework — Apache-2.0
+  https://github.com/SantanderAI/mech-gov-framework
+
+  Transcribed into ftm/expb/gates.py (logic and thresholds):
+    src/mech_gov/governance/primitives/hard_gates.py
+    src/mech_gov/governance/primitives/ambiguity_gate.py
+  and, for ARM-1, the R1 policy text into ftm/expb/arm1_policy.py:
+    src/mech_gov/governance/policy_templates/r1_system_prompt.txt
+
+  SHA-256 of each source file is pinned in the corresponding module and in
+  every Experiment B run manifest.
+
+The benchmark scenario data grounded in the Stressed German Credit Dataset
+(CC BY 4.0) is attributed separately in
+scenarios/packs/ftm_banking_v0/ATTRIBUTION.md.
+
+See ATTRIBUTION.md for full attribution details.

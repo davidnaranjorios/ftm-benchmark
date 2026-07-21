@@ -4,3 +4,8 @@ ftm_benchmark.egg-info/
 *.egg-info/
 dist/
 build/
+
+# Experiment B: generated run outputs and operator-private material
+results/
+checkpoints/
+mitigations/
