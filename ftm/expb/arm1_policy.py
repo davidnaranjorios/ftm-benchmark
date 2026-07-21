@@ -13,6 +13,21 @@ recorded separately in the manifest and never presented as part of R1.
 from __future__ import annotations
 
 import hashlib
+import json
+import re
+
+from ftm.engine import parse_decision
+
+# R1 decision → FTM ACT/STAY. APPROVE = proceed untouched → STAY; any
+# intervention (CONDITIONAL/ESCALATE/DEFER/DECLINE) → ACT. Identical to what
+# the bridge asks the model to do; applied deterministically as a fallback.
+R1_DECISION_TO_FTM = {
+    "APPROVE": "STAY",
+    "CONDITIONAL": "ACT",
+    "ESCALATE": "ACT",
+    "DEFER": "ACT",
+    "DECLINE": "ACT",
+}
 
 # Verbatim from r1_system_prompt.txt (do not edit — keep byte-identical to
 # source; R1_SHA256 verifies it against the pinned upstream file).
@@ -90,3 +105,43 @@ def arm1_operator_prompt() -> str:
 
 def verify_r1_sha() -> bool:
     return hashlib.sha256(R1_TEXT.encode("utf-8")).hexdigest() == R1_SHA256
+
+
+def _json_decision(text: str) -> str | None:
+    """Extract R1's JSON `decision` field, handling markdown fences."""
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```(?:json)?\s*\n?", "", t)
+        t = re.sub(r"\n?```\s*$", "", t)
+    candidates = [t]
+    block = re.search(r"\{.*\}", t, re.DOTALL)
+    if block:
+        candidates.append(block.group())
+    for candidate in candidates:
+        try:
+            obj = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        d = str(obj.get("decision", "")).strip().upper()
+        if d in R1_DECISION_TO_FTM:
+            return d
+    return None
+
+
+def resolve_r1_decision(text: str) -> tuple[str, str]:
+    """Hybrid ARM-1 decision extraction.
+
+    Returns (decision, source):
+      1. If the model emitted a parseable 'DECISION: ACT/STAY' line, use it
+         (source='decision_line').
+      2. Else fall back to R1's JSON `decision` field, mapped to ACT/STAY
+         (source='json_fallback').
+      3. Else 'PARSE_FAIL' (source='unresolved').
+    """
+    line = parse_decision(text)["decision"]
+    if line in ("STAY", "ACT"):
+        return line, "decision_line"
+    d = _json_decision(text)
+    if d is not None:
+        return R1_DECISION_TO_FTM[d], "json_fallback"
+    return "PARSE_FAIL", "unresolved"

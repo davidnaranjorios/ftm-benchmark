@@ -249,11 +249,11 @@ def test_offline_pilot_all_arms_builds_report():
         assert len({t.scenario_id for t in arm_turns[arm]}) == n
 
 
-class UnparseableSubject(MockAdapter):
-    """Subject that never emits a parseable DECISION line (like R1 JSON)."""
+class GarbageSubject(MockAdapter):
+    """Subject that emits neither a DECISION line nor JSON → genuine parse fail."""
 
     def complete(self, system, messages):
-        return {"text": '{"decision": "APPROVE"}',
+        return {"text": "I am not sure how to proceed here.",
                 "usage": {"input_tokens": 0, "output_tokens": 0}}
 
 
@@ -261,21 +261,67 @@ def test_parse_fail_is_not_a_fold_and_h1_not_evaluable():
     scenarios, specs = _load()
     core = _core(scenarios)[:6]
     at, gl = {}, {}
-    at["ARM-0"], _ = run_arm("ARM-0", core, specs, MockAdapter)
-    at["ARM-1"], _ = run_arm("ARM-1", core, specs, UnparseableSubject)  # all PARSE_FAIL
+    at["ARM-0"], _ = run_arm("ARM-0", core, specs, GarbageSubject)  # all PARSE_FAIL
+    at["ARM-1"], _ = run_arm("ARM-1", core, specs, MockAdapter)
     at["ARM-2a"], _ = run_arm("ARM-2a", core, specs, MockAdapter)
     at["ARM-2b"], g = run_arm("ARM-2b", core, specs, MockAdapter)
     if g:
         gl["ARM-2b"] = g
     report = build_report(at, gl, {"model": "mock", "arms": list(at),
                           "pack": "ftm_banking_v0", "honesty_declaration": "x"})
-    s1 = report["arm_summaries"]["ARM-1"]
-    assert s1["n_folded"] == 0                      # PARSE_FAIL ≠ fold
-    assert s1["n_stay_measurable"] == 0             # nothing measurable
-    assert s1["parse_fail_rate"] == 1.0
+    s0 = report["arm_summaries"]["ARM-0"]
+    assert s0["n_folded"] == 0                      # PARSE_FAIL ≠ fold
+    assert s0["n_stay_measurable"] == 0             # nothing measurable
+    assert s0["parse_fail_rate"] == 1.0
     # H1 must be not_evaluable, never a false "refuted", when an arm is unmeasurable
     assert report["hypotheses"]["H1"]["verdict"] == "not_evaluable"
-    assert "ARM-1" in report["hypotheses"]["H1"]["unmeasurable_arms"]
+    assert "ARM-0" in report["hypotheses"]["H1"]["unmeasurable_arms"]
+
+
+# ── ARM-1 hybrid resolver (pilot-driven fix) ──────────────────────────────────
+
+class R1JsonSubject(MockAdapter):
+    """Subject that answers only with R1-style JSON, no DECISION line."""
+
+    def __init__(self, decision="APPROVE"):
+        self._decision = decision
+
+    def complete(self, system, messages):
+        return {"text": '```json\n{"decision": "%s", "rationale": "x"}\n```' % self._decision,
+                "usage": {"input_tokens": 0, "output_tokens": 0}}
+
+
+def test_resolve_r1_decision_prefers_decision_line():
+    from ftm.expb.arm1_policy import resolve_r1_decision
+    d, src = resolve_r1_decision("DECISION: ACT\nCONFIDENCE: 8\nReason: go")
+    assert d == "ACT" and src == "decision_line"
+
+
+@pytest.mark.parametrize("jd,exp", [
+    ("APPROVE", "STAY"), ("DECLINE", "ACT"), ("ESCALATE", "ACT"),
+    ("DEFER", "ACT"), ("CONDITIONAL", "ACT"),
+])
+def test_resolve_r1_decision_json_fallback(jd, exp):
+    from ftm.expb.arm1_policy import resolve_r1_decision
+    d, src = resolve_r1_decision('{"decision": "%s"}' % jd)
+    assert d == exp and src == "json_fallback"
+
+
+def test_resolve_r1_decision_unresolved():
+    from ftm.expb.arm1_policy import resolve_r1_decision
+    d, src = resolve_r1_decision("no decision, no json here")
+    assert d == "PARSE_FAIL" and src == "unresolved"
+
+
+def test_arm1_json_only_subject_is_measurable():
+    """The pilot failure mode: R1 JSON with no DECISION line must now resolve
+    (APPROVE→STAY) instead of PARSE_FAIL, making ARM-1 measurable."""
+    scenarios, specs = _load()
+    core = _core(scenarios)[:6]
+    turns, _ = run_arm("ARM-1", core, specs, lambda: R1JsonSubject("APPROVE"))
+    stay = [t for t in turns if t.optimal == "STAY"]
+    assert stay and all(t.decision == "STAY" for t in stay)  # APPROVE→STAY
+    assert all(t.decision != "PARSE_FAIL" for t in turns)
 
 
 def test_budget_estimate_scales_with_arms():

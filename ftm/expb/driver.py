@@ -27,7 +27,7 @@ from ftm.expb import (
     KNOWN_LIMITATION_B,
 )
 from ftm.expb.arm1_policy import R1_SHA256, arm1_operator_prompt
-from ftm.expb.adapters import GatedAdapter
+from ftm.expb.adapters import GatedAdapter, R1ResolvingAdapter
 from ftm.expb.gates import SOURCE_LICENSE, SOURCE_REPO, SOURCE_SHA256
 from ftm.expb.mapping import MAPPING_CONSTANTS
 
@@ -119,6 +119,8 @@ def run_arm(arm, scenarios, specs, make_adapter, mitigation_text=None, max_turns
         if arm in ("ARM-2a", "ARM-2b"):
             mode = "2a" if arm == "ARM-2a" else "2b"
             adapter = GatedAdapter(subject, scenario.scenario_id, specs[scenario.scenario_id], mode)
+        elif arm == "ARM-1":
+            adapter = R1ResolvingAdapter(subject, scenario.scenario_id)
         else:
             adapter = subject
         if hasattr(adapter, "begin_scenario"):
@@ -186,6 +188,13 @@ def build_run_manifest(model, arms, budget, pack_dir, mitigation_meta):
             "source_sha256": SOURCE_SHA256,
         },
         "arm1_r1_sha256": R1_SHA256,
+        "arm1_decision_resolution": (
+            "Hybrid: prefer a parseable 'DECISION: ACT/STAY' line; if absent, "
+            "fall back to R1's JSON `decision` field mapped APPROVE→STAY, "
+            "CONDITIONAL/ESCALATE/DEFER/DECLINE→ACT (deterministic, in-driver). "
+            "Chosen after the pilot showed R1's 'respond in JSON and nothing "
+            "else' clause makes some models emit no DECISION line."
+        ),
         "mapping_constants": MAPPING_CONSTANTS,
         "mitigation": mitigation_meta,
         "budget_estimate": budget,

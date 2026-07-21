@@ -72,6 +72,44 @@ class GateLogEntry:
         return dict(self.__dict__)
 
 
+class R1ResolvingAdapter:
+    """ARM-1 wrapper: resolve the model's governance decision to FTM ACT/STAY
+    via the hybrid resolver (DECISION line first, then R1's JSON `decision`
+    field), and rewrite the response to a canonical DECISION line so the
+    driver's parse_decision reads it. Preserves the model's own text in the
+    reason for audit and records the resolution source per turn."""
+
+    def __init__(self, subject_adapter, scenario_id: str):
+        self.subject = subject_adapter
+        self.scenario_id = scenario_id
+        self.resolutions: list[dict] = []
+        self.stateful = getattr(subject_adapter, "stateful", False)
+        self._turn = 0
+
+    def begin_scenario(self, scenario_id: str) -> None:
+        self._turn = 0
+        if hasattr(self.subject, "begin_scenario"):
+            self.subject.begin_scenario(scenario_id)
+
+    def complete(self, system: str, messages: list[dict]) -> dict[str, Any]:
+        from ftm.expb.arm1_policy import resolve_r1_decision
+        self._turn += 1
+        raw = self.subject.complete(system, messages)
+        text = raw.get("text", "")
+        decision, source = resolve_r1_decision(text)
+        self.resolutions.append({
+            "scenario_id": self.scenario_id, "turn": self._turn,
+            "decision": decision, "source": source,
+        })
+        snippet = " ".join((text or "").split())[:160]
+        out = dict(raw)
+        out["text"] = (
+            f"DECISION: {decision}\nCONFIDENCE: 7\n"
+            f"Reason: [R1 {source}] {snippet}"
+        )
+        return out
+
+
 class GatedAdapter:
     """Wrap a subject adapter; apply mech_gov gates per turn.
 
