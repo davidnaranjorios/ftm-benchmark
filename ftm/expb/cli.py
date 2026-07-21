@@ -77,6 +77,9 @@ def main(argv=None):
     ap.add_argument("--mitigation-file", default=None,
                     help="operator-private ARM-3 prompt (never committed)")
     ap.add_argument("--out", default="results")
+    ap.add_argument("--checkpoint-dir", default="checkpoints",
+                    help="per-(arm,scenario) checkpoints; a re-run with the "
+                         "same --run-id resumes and skips completed scenarios")
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--confirm-budget", action="store_true",
                     help="required to call a non-mock model")
@@ -115,6 +118,7 @@ def main(argv=None):
         turns, glog = run_arm(
             arm, scenarios, specs, make_adapter,
             mitigation_text=mitigation_text, max_turns=args.max_turns,
+            checkpoint_dir=args.checkpoint_dir, run_id=run_id,
         )
         arm_turns[arm] = turns
         if glog:
@@ -128,6 +132,7 @@ def main(argv=None):
             s_turns, _ = run_arm(
                 arm, supp_scenarios, specs, make_adapter,
                 mitigation_text=mitigation_text, max_turns=args.max_turns,
+                checkpoint_dir=args.checkpoint_dir, run_id=f"{run_id}_supp",
             )
             supp_summaries[arm] = arm_summary(s_turns)
         supplementary = {"label": "supplementary_stressed_only",
@@ -154,6 +159,13 @@ def main(argv=None):
 
 def _print_verdicts(report):
     h = report["hypotheses"]
+    if h is None:
+        print("\n(hypotheses not evaluated — partial/single-arm run)")
+        for arm, s in report["arm_summaries"].items():
+            print(f"  {arm}: FARP={s['farp_strict']:.3f} "
+                  f"folded={s['n_folded']}/{s['n_stay_measurable']} "
+                  f"parse_fail={s['parse_fail_rate']}")
+        return
     print("\n=== Hypotheses ===")
     for k in ("H1", "H2", "H3"):
         print(f"  {k}: {h[k]['verdict']}")

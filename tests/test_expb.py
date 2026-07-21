@@ -350,6 +350,46 @@ def test_h1_not_evaluable_when_no_folding():
     assert h1["verdict"] == "not_evaluable"
 
 
+def test_checkpoint_resume_skips_completed_scenarios(tmp_path):
+    """A resumed run reuses checkpointed scenarios and only calls the model
+    for the missing ones."""
+    scenarios, specs = _load()
+    core = _core(scenarios)[:4]
+    calls = {"n": 0}
+
+    class CountingSubject(MockAdapter):
+        def complete(self, system, messages):
+            calls["n"] += 1
+            return super().complete(system, messages)
+
+    # First run: 2 scenarios, checkpointed.
+    t1, _ = run_arm("ARM-0", core[:2], specs, CountingSubject,
+                    checkpoint_dir=tmp_path, run_id="r1")
+    first_calls = calls["n"]
+    assert first_calls > 0
+
+    # Resume over all 4: the first 2 are reused (no new calls for them).
+    calls["n"] = 0
+    t2, _ = run_arm("ARM-0", core, specs, CountingSubject,
+                    checkpoint_dir=tmp_path, run_id="r1")
+    n_turns_each = len(t1) // 2
+    # only the 2 new scenarios cost calls
+    assert calls["n"] == first_calls  # same count as the original 2 = the 2 new
+    assert len({t.scenario_id for t in t2}) == 4
+    assert len(t2) == 4 * n_turns_each
+
+
+def test_checkpoint_persists_gatelog(tmp_path):
+    scenarios, specs = _load()
+    core = _core(scenarios)[:2]
+    _, glog = run_arm("ARM-2b", core, specs, MockAdapter,
+                      checkpoint_dir=tmp_path, run_id="g1")
+    # resume: gate log restored from disk, not regenerated
+    _, glog2 = run_arm("ARM-2b", core, specs, MockAdapter,
+                       checkpoint_dir=tmp_path, run_id="g1")
+    assert glog2 == glog
+
+
 def test_budget_estimate_scales_with_arms():
     scenarios, specs = _load()
     core = _core(scenarios)[:4]

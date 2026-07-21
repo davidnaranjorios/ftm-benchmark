@@ -9,9 +9,9 @@ A budget estimate is printed before any non-mock model is called;
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import time
-from dataclasses import asdict
 from pathlib import Path
 
 from ftm.engine import (
@@ -104,16 +104,66 @@ def _print_budget(budget: dict, model: str) -> None:
     print("=" * 52)
 
 
-def run_arm(arm, scenarios, specs, make_adapter, mitigation_text=None, max_turns=None):
+class CheckpointStore:
+    """Per-(arm, scenario) checkpoint. A scenario's turns are written in one
+    batch only after all its turns complete, so what is on disk is always
+    whole scenarios — a crash loses at most the in-progress scenario, and a
+    resume skips every scenario already recorded. Survives container restarts.
+    """
+
+    def __init__(self, checkpoint_dir, run_id, arm):
+        self.dir = Path(checkpoint_dir) / f"expB_{run_id}"
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.turns_path = self.dir / f"{arm}.turns.jsonl"
+        self.gate_path = self.dir / f"{arm}.gatelog.jsonl"
+
+    def load(self) -> tuple[dict[str, list[TurnResult]], dict[str, list[dict]]]:
+        done: dict[str, list[TurnResult]] = {}
+        if self.turns_path.exists():
+            for line in self.turns_path.read_text().splitlines():
+                if line.strip():
+                    d = json.loads(line)
+                    done.setdefault(d["scenario_id"], []).append(TurnResult(**d))
+        glog: dict[str, list[dict]] = {}
+        if self.gate_path.exists():
+            for line in self.gate_path.read_text().splitlines():
+                if line.strip():
+                    e = json.loads(line)
+                    glog.setdefault(e["scenario_id"], []).append(e)
+        return done, glog
+
+    def append(self, scenario_turns, scenario_gatelog):
+        with self.turns_path.open("a") as f:
+            f.write("".join(json.dumps(dataclasses.asdict(tr)) + "\n" for tr in scenario_turns))
+        if scenario_gatelog:
+            with self.gate_path.open("a") as f:
+                f.write("".join(json.dumps(e) + "\n" for e in scenario_gatelog))
+
+
+def run_arm(arm, scenarios, specs, make_adapter, mitigation_text=None,
+            max_turns=None, checkpoint_dir=None, run_id=None):
     """Run one arm. make_adapter() returns a fresh subject adapter.
+
+    If checkpoint_dir is given, each scenario's turns are persisted as it
+    completes and already-recorded scenarios are skipped on resume.
 
     Returns (turn_results, gate_log). gate_log is non-empty only for ARM-2*.
     """
     turn_results: list[TurnResult] = []
     gate_log: list[dict] = []
 
+    ckpt = CheckpointStore(checkpoint_dir, run_id, arm) if checkpoint_dir else None
+    done_turns, done_gate = ckpt.load() if ckpt else ({}, {})
+    if done_turns:
+        print(f"  [{arm}] resuming: {len(done_turns)} scenarios already checkpointed")
+
     for scenario in scenarios:
+        sid = scenario.scenario_id
         n = _n_turns(scenario) if max_turns is None else min(_n_turns(scenario), max_turns)
+        if sid in done_turns and len(done_turns[sid]) == n:
+            turn_results.extend(done_turns[sid])
+            gate_log.extend(done_gate.get(sid, []))
+            continue
         system = _arm_system_prompt(arm, scenario, mitigation_text)
         subject = make_adapter()
         if arm in ("ARM-2a", "ARM-2b"):
@@ -127,6 +177,7 @@ def run_arm(arm, scenarios, specs, make_adapter, mitigation_text=None, max_turns
             adapter.begin_scenario(scenario.scenario_id)
 
         messages: list[dict] = []
+        scenario_turns: list[TurnResult] = []
         for t in range(1, n + 1):
             user_msg = build_turn_user_message(scenario, t)
             messages.append({"role": "user", "content": user_msg})
@@ -141,7 +192,7 @@ def run_arm(arm, scenarios, specs, make_adapter, mitigation_text=None, max_turns
                 scenario.active_channels_by_turn[t - 1]
                 if t - 1 < len(scenario.active_channels_by_turn) else []
             )
-            turn_results.append(TurnResult(
+            scenario_turns.append(TurnResult(
                 scenario_id=scenario.scenario_id,
                 domain=scenario.domain,
                 condition=scenario.condition,
@@ -160,8 +211,13 @@ def run_arm(arm, scenarios, specs, make_adapter, mitigation_text=None, max_turns
                 raw_response=text,
                 latency_ms=latency_ms,
             ))
-        if isinstance(adapter, GatedAdapter):
-            gate_log.extend(e.as_dict() for e in adapter.gate_log)
+        scenario_gate = (
+            [e.as_dict() for e in adapter.gate_log] if isinstance(adapter, GatedAdapter) else []
+        )
+        if ckpt:
+            ckpt.append(scenario_turns, scenario_gate)
+        turn_results.extend(scenario_turns)
+        gate_log.extend(scenario_gate)
 
     return turn_results, gate_log
 

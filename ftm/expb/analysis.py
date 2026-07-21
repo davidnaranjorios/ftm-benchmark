@@ -172,16 +172,21 @@ def evaluate_hypotheses(summaries: dict[str, dict], h3: dict) -> dict:
 
 
 def build_report(arm_turns, gate_logs, run_manifest, supplementary=None):
-    """arm_turns: {arm: [TurnResult]}. gate_logs: {arm: [dict]}."""
+    """arm_turns: {arm: [TurnResult]}. gate_logs: {arm: [dict]}.
+
+    Tolerant of missing arms (e.g. a single-arm signal check): pairs and
+    hypotheses are only computed for the arms actually present."""
     summaries = {arm: arm_summary(turns) for arm, turns in arm_turns.items()}
-    pairs = [("ARM-0", "ARM-1"), ("ARM-1", "ARM-2b"), ("ARM-0", "ARM-2b"),
-             ("ARM-0", "ARM-2a")]
-    if "ARM-3" in arm_turns:
-        pairs.append(("ARM-2b", "ARM-3"))
+    candidate_pairs = [("ARM-0", "ARM-1"), ("ARM-1", "ARM-2b"),
+                       ("ARM-0", "ARM-2b"), ("ARM-0", "ARM-2a"),
+                       ("ARM-2b", "ARM-3")]
     folds = {arm: fold_by_scenario(turns) for arm, turns in arm_turns.items()}
-    paired = {f"{a}_vs_{b}": mcnemar(folds[a], folds[b]) for a, b in pairs}
-    h3 = h3_ambiguity_share(arm_turns["ARM-2b"], gate_logs.get("ARM-2b", []))
-    hyp = evaluate_hypotheses(summaries, h3)
+    paired = {f"{a}_vs_{b}": mcnemar(folds[a], folds[b])
+              for a, b in candidate_pairs if a in folds and b in folds}
+    hyp = None
+    if {"ARM-0", "ARM-1", "ARM-2a", "ARM-2b"} <= set(arm_turns):
+        h3 = h3_ambiguity_share(arm_turns["ARM-2b"], gate_logs.get("ARM-2b", []))
+        hyp = evaluate_hypotheses(summaries, h3)
 
     return {
         "manifest": run_manifest,
@@ -224,24 +229,28 @@ def report_to_markdown(report: dict) -> str:
             f"{s['act_acc']:.2f} |"
         )
     h = report["hypotheses"]
-    lines += [
-        "",
-        "## Hypotheses",
-        "",
-        "| Hypothesis | Verdict |",
-        "|---|---|",
-        f"| H1 — {h['H1']['statement']} | **{h['H1']['verdict']}** |",
-        f"| H2 — {h['H2']['statement']} | **{h['H2']['verdict']}** |",
-        f"| H3 — {h['H3']['statement']} | **{h['H3']['verdict']}** |",
-        "",
-        f"**ARM-2a sanity** (must be FARP=0): "
-        f"{h['sanity_ARM_2a']['farp_strict']:.3f} — "
-        f"{'PASS' if h['sanity_ARM_2a']['passes'] else 'FAIL'}",
-        "",
-        f"**H3 detail:** {h['H3']['detail']['n_via_ambiguity_reestimate']}/"
-        f"{h['H3']['detail']['n_folds']} ARM-2b folds broke via the ambiguity "
-        f"gate on a re-estimated completeness.",
-    ]
+    if h is None:
+        lines += ["", "_Hypotheses not evaluated (not all of ARM-0/1/2a/2b "
+                  "present — partial or single-arm run)._"]
+    else:
+        lines += [
+            "",
+            "## Hypotheses",
+            "",
+            "| Hypothesis | Verdict |",
+            "|---|---|",
+            f"| H1 — {h['H1']['statement']} | **{h['H1']['verdict']}** |",
+            f"| H2 — {h['H2']['statement']} | **{h['H2']['verdict']}** |",
+            f"| H3 — {h['H3']['statement']} | **{h['H3']['verdict']}** |",
+            "",
+            f"**ARM-2a sanity** (must be FARP=0): "
+            f"{h['sanity_ARM_2a']['farp_strict']:.3f} — "
+            f"{'PASS' if h['sanity_ARM_2a']['passes'] else 'FAIL'}",
+            "",
+            f"**H3 detail:** {h['H3']['detail']['n_via_ambiguity_reestimate']}/"
+            f"{h['H3']['detail']['n_folds']} ARM-2b folds broke via the ambiguity "
+            f"gate on a re-estimated completeness.",
+        ]
     if report.get("supplementary_descriptive"):
         lines += ["", "## Supplementary (descriptive, outside H1–H3)", "",
                   "```json", json.dumps(report["supplementary_descriptive"], indent=2), "```"]
