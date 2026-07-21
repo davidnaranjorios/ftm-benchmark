@@ -307,6 +307,15 @@ def test_resolve_r1_decision_json_fallback(jd, exp):
     assert d == exp and src == "json_fallback"
 
 
+def test_resolve_r1_decision_truncated_json():
+    """R1's verbose JSON cut off at max_tokens still yields the decision."""
+    from ftm.expb.arm1_policy import resolve_r1_decision
+    truncated = ('```json\n{\n  "decision": "DECLINE",\n  "rationale": "The risk '
+                 'score of 0.95 is well abo')  # cut mid-string, no closing brace
+    d, src = resolve_r1_decision(truncated)
+    assert d == "ACT" and src == "json_fallback"
+
+
 def test_resolve_r1_decision_unresolved():
     from ftm.expb.arm1_policy import resolve_r1_decision
     d, src = resolve_r1_decision("no decision, no json here")

@@ -125,6 +125,14 @@ def _json_decision(text: str) -> str | None:
         d = str(obj.get("decision", "")).strip().upper()
         if d in R1_DECISION_TO_FTM:
             return d
+    # Truncation-robust fallback: R1's `decision` is the first JSON field, so
+    # a verbose response cut off at max_tokens still carries it even though
+    # json.loads fails on the incomplete object.
+    m = re.search(r'"decision"\s*:\s*"([A-Za-z]+)"', t)
+    if m:
+        d = m.group(1).strip().upper()
+        if d in R1_DECISION_TO_FTM:
+            return d
     return None
 
 
