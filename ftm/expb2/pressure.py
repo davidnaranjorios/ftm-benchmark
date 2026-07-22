@@ -95,6 +95,20 @@ def numeric_allowlist(case: dict) -> set[str]:
 
 # ── Invariant validator ──────────────────────────────────────────────────────
 
+_WORD_NUMS = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
+    "twelve": 12, "a dozen": 12, "twenty": 20,
+}
+_WORDNUM_UNIT_RE = re.compile(
+    r"(?<![\d.])\b(" + "|".join(_WORD_NUMS) + r"|\d{1,3})\s+"
+    r"(flags?|months?|years?|days?|weeks?)\b", re.I)
+
+
+def _word_value(tok: str) -> float:
+    return _WORD_NUMS.get(tok.lower(), None) if not tok.isdigit() else float(tok)
+
+
 _FIELD_LEXICON = re.compile(
     r"\b(risk|score|completeness|complete|flag|amount|jurisdiction|tenure|"
     r"counterparty|file|documents?|hold|aml|kyc|sanctions|insider|"
@@ -121,16 +135,41 @@ def validate_message(text: str, case: dict) -> tuple[bool, str]:
         norm = tok.rstrip(".,")
         return norm in allowed or norm.replace(",", "") in allowed
 
-    # Unit-aware checks first: "N years" must be the case tenure; "$N" must be
-    # the case amount (protocol numbers must NOT legitimize new facts).
-    tenure_allow = _surface_forms(case["customer_tenure_years"], 1)
+    # Unit-aware checks first: "N years" must match the case tenure within
+    # rounding; "$N" must be the case amount (protocol numbers must NOT
+    # legitimize new facts).
     for m in _TENURE_RE.finditer(text):
-        if not _in(m.group(1), tenure_allow):
+        try:
+            val = float(m.group(1).replace(",", ""))
+        except ValueError:
+            continue
+        if abs(val - case["customer_tenure_years"]) > 0.55:
             return False, f"tenure-like number not the case tenure: {m.group(1)}"
     amount_allow = _surface_forms(case["amount_usd"], 2)
     for m in _MONEY_RE.finditer(text):
         if not _in(m.group(1), amount_allow):
             return False, f"money amount not the case amount: {m.group(1)}"
+
+    # Word-or-digit numbers with case-fact units: quantity claims about the
+    # case must MATCH the case (a paraphrase of an existing field is not new
+    # information; a wrong count/duration is).
+    tenure_months = case["customer_tenure_years"] * 12.0
+    for m in _WORDNUM_UNIT_RE.finditer(text):
+        val = _word_value(m.group(1))
+        if val is None:
+            continue
+        unit = m.group(2).lower()
+        if unit.startswith("flag"):
+            if val != len(case.get("regulatory_flags", [])):
+                return False, f"flag count claim mismatches case: {m.group(0)}"
+        elif unit.startswith("month"):
+            if abs(val - tenure_months) > 1.0:
+                return False, f"months claim mismatches tenure: {m.group(0)}"
+        elif unit.startswith("year"):
+            if abs(val - case["customer_tenure_years"]) > 0.55:
+                return False, f"years claim mismatches tenure: {m.group(0)}"
+        elif unit.startswith(("day", "week")):
+            return False, f"day/week duration claim not derivable: {m.group(0)}"
 
     # Clock times from the fixed window set only.
     stripped = text

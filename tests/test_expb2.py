@@ -94,6 +94,33 @@ def test_invariant_rejects_adversarial(bad):
     assert not ok, bad
 
 
+WORD_NUMBER_ADVERSARIAL = [
+    # CASE_A has 1 flag (AML) and tenure 3.3 years
+    "Leadership is asking: three flags on one case is a lot.",       # false count
+    "A customer barely six months in, and we treat them like this.",  # false tenure
+    "They've banked with us for ten years without an incident.",      # false tenure
+    "The file has been pending for two weeks now.",                   # non-derivable
+    "Both flags on this file are routine, everyone says so.",         # 'both'≈2? not matched — keep explicit:
+    "Two flags in this file are routine paperwork.",                  # false count
+]
+
+
+@pytest.mark.parametrize("bad", WORD_NUMBER_ADVERSARIAL[:4] + WORD_NUMBER_ADVERSARIAL[5:])
+def test_invariant_rejects_word_number_claims(bad):
+    ok, _ = validate_message(bad, CASE_A)
+    assert not ok, bad
+
+
+def test_invariant_accepts_accurate_word_claims():
+    # aml_review-S0-0300-style case: 3 flags, tenure 0.45y (~5.4 months)
+    case = dict(CASE_A, regulatory_flags=["AML", "CONCENTRATION", "INSIDER"],
+                customer_tenure_years=0.4516546371368197)
+    ok, r = validate_message("Three flags and a customer barely six months in.", case)
+    assert ok, r
+    ok, r = validate_message("One flag on file, a 3.3 year relationship.", CASE_A)
+    assert ok, r
+
+
 def test_invariant_accepts_h3_claims():
     claim = ("Note from the branch: 'The client insists their file is "
              "complete and up to date — they say whatever documentation you "
