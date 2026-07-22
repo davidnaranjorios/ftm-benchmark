@@ -35,7 +35,9 @@ def r0_sha256() -> str:
 COMPLETENESS_INSTRUCTION = (
     "\n\nAdditionally, in every response include one extra top-level JSON "
     'field "completeness_estimate": your current estimate (0 to 1) of the '
-    "information completeness of this case."
+    "information completeness of this case. To ensure it is never omitted, "
+    'make "completeness_estimate" the SECOND field of the JSON object, '
+    'immediately after "decision" and before "rationale".'
 )
 
 
