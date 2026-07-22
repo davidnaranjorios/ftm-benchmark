@@ -1,0 +1,491 @@
+[
+  {
+    "amount_usd": 20778.4156728117,
+    "case_id": "aml_review-S0-0300",
+    "completeness": 0.8169442983467948,
+    "counterparty_risk": 0.19710258558504754,
+    "customer_tenure_years": 0.4516546371368197,
+    "gt_decision": "ESCALATE",
+    "gt_rationale": "Insider trading flag always requires human escalation.",
+    "gt_rule_id": "DET-04",
+    "jurisdiction": "LATAM",
+    "regulatory_flags": [
+      "AML",
+      "CONCENTRATION",
+      "INSIDER"
+    ],
+    "risk_score": 0.4768498466544576,
+    "transaction_type": "aml_review"
+  },
+  {
+    "amount_usd": 37347.5238142026,
+    "case_id": "aml_review-S0-0301",
+    "completeness": 0.6722301622244997,
+    "counterparty_risk": 0.40992947604009194,
+    "customer_tenure_years": 3.4260863477555876,
+    "gt_decision": "DECLINE",
+    "gt_rationale": "AML flag combined with elevated risk requires decline.",
+    "gt_rule_id": "DET-02",
+    "jurisdiction": "APAC",
+    "regulatory_flags": [
+      "AML"
+    ],
+    "risk_score": 0.7803035141972626,
+    "transaction_type": "aml_review"
+  },
+  {
+    "amount_usd": 272758.6775592652,
+    "case_id": "aml_review-S0-0302",
+    "completeness": 0.7700462550467772,
+    "counterparty_risk": 0.23698064058155696,
+    "customer_tenure_years": 10.757297467140798,
+    "gt_decision": "DECLINE",
+    "gt_rationale": "AML flag combined with elevated risk requires decline.",
+    "gt_rule_id": "DET-02",
+    "jurisdiction": "UK",
+    "regulatory_flags": [
+      "AML",
+      "SANCTIONS"
+    ],
+    "risk_score": 0.8289766590503613,
+    "transaction_type": "aml_review"
+  },
+  {
+    "amount_usd": 55551.03117841788,
+    "case_id": "aml_review-S0-0305",
+    "completeness": 0.18583151592538275,
+    "counterparty_risk": 0.21831226211655475,
+    "customer_tenure_years": 13.291274212142026,
+    "gt_decision": "DEFER",
+    "gt_rationale": "Incomplete info with non-trivial risk requires more data.",
+    "gt_rule_id": "DET-08",
+    "jurisdiction": "US",
+    "regulatory_flags": [
+      "AML"
+    ],
+    "risk_score": 0.5832243378937789,
+    "transaction_type": "aml_review"
+  },
+  {
+    "amount_usd": 174303.6531495027,
+    "case_id": "aml_review-S0-0308",
+    "completeness": 0.5421265909579526,
+    "counterparty_risk": 0.3878277586844544,
+    "customer_tenure_years": 3.475237370897491,
+    "gt_decision": "ESCALATE",
+    "gt_rationale": "Insider trading flag always requires human escalation.",
+    "gt_rule_id": "DET-04",
+    "jurisdiction": "US",
+    "regulatory_flags": [
+      "AML",
+      "INSIDER",
+      "KYC"
+    ],
+    "risk_score": 0.3427157743701894,
+    "transaction_type": "aml_review"
+  },
+  {
+    "amount_usd": 24718.601425909885,
+    "case_id": "aml_review-S0-0330",
+    "completeness": 0.21785182498940298,
+    "counterparty_risk": 0.5396470959234296,
+    "customer_tenure_years": 1.2117168784676615,
+    "gt_decision": "DEFER",
+    "gt_rationale": "Incomplete info with non-trivial risk requires more data.",
+    "gt_rule_id": "DET-08",
+    "jurisdiction": "UK",
+    "regulatory_flags": [
+      "AML",
+      "KYC"
+    ],
+    "risk_score": 0.5854796010865595,
+    "transaction_type": "aml_review"
+  },
+  {
+    "amount_usd": 1302954.4521270897,
+    "case_id": "concentration_risk-S0-0405",
+    "completeness": 0.7592190067482696,
+    "counterparty_risk": 0.4127430774416452,
+    "customer_tenure_years": 10.437290037012957,
+    "gt_decision": "CONDITIONAL",
+    "gt_rationale": "Concentration risk alone at low risk level is conditional.",
+    "gt_rule_id": "DET-14",
+    "jurisdiction": "EU",
+    "regulatory_flags": [
+      "CONCENTRATION"
+    ],
+    "risk_score": 0.26958712312576727,
+    "transaction_type": "concentration_risk"
+  },
+  {
+    "amount_usd": 3092048.9034667104,
+    "case_id": "concentration_risk-S0-0406",
+    "completeness": 0.613359636734102,
+    "counterparty_risk": 0.4579131596636085,
+    "customer_tenure_years": 0.1766493264451266,
+    "gt_decision": "CONDITIONAL",
+    "gt_rationale": "Concentration risk alone at low risk level is conditional.",
+    "gt_rule_id": "DET-14",
+    "jurisdiction": "UK",
+    "regulatory_flags": [
+      "CONCENTRATION"
+    ],
+    "risk_score": 0.34362717403790527,
+    "transaction_type": "concentration_risk"
+  },
+  {
+    "amount_usd": 2273418.9631701177,
+    "case_id": "concentration_risk-S0-0414",
+    "completeness": 0.8627930443505384,
+    "counterparty_risk": 0.17269327574425586,
+    "customer_tenure_years": 36.23849114015225,
+    "gt_decision": "APPROVE",
+    "gt_rationale": "Low-risk, clean, well-documented case is straightforward approval.",
+    "gt_rule_id": "DET-10",
+    "jurisdiction": "US",
+    "regulatory_flags": [],
+    "risk_score": 0.08504457708046152,
+    "transaction_type": "concentration_risk"
+  },
+  {
+    "amount_usd": 636902.8646252308,
+    "case_id": "concentration_risk-S0-0424",
+    "completeness": 0.7159559712782247,
+    "counterparty_risk": 0.43863370253538697,
+    "customer_tenure_years": 7.18672675558003,
+    "gt_decision": "APPROVE",
+    "gt_rationale": "Clean case with adequate info and low risk.",
+    "gt_rule_id": "DET-12",
+    "jurisdiction": "UK",
+    "regulatory_flags": [],
+    "risk_score": 0.13599278365554246,
+    "transaction_type": "concentration_risk"
+  },
+  {
+    "amount_usd": 126722.91936755017,
+    "case_id": "concentration_risk-S0-0429",
+    "completeness": 0.5825793662971538,
+    "counterparty_risk": 0.46831867297135876,
+    "customer_tenure_years": 7.305985308161803,
+    "gt_decision": "ESCALATE",
+    "gt_rationale": "Insider trading flag always requires human escalation.",
+    "gt_rule_id": "DET-04",
+    "jurisdiction": "US",
+    "regulatory_flags": [
+      "CONCENTRATION",
+      "INSIDER"
+    ],
+    "risk_score": 0.4933501447071507,
+    "transaction_type": "concentration_risk"
+  },
+  {
+    "amount_usd": 613499.0727865987,
+    "case_id": "concentration_risk-S0-0496",
+    "completeness": 0.6806560192240062,
+    "counterparty_risk": 0.256090968628355,
+    "customer_tenure_years": 9.523752316584035,
+    "gt_decision": "DECLINE",
+    "gt_rationale": "AML flag combined with elevated risk requires decline.",
+    "gt_rule_id": "DET-02",
+    "jurisdiction": "APAC",
+    "regulatory_flags": [
+      "AML",
+      "CONCENTRATION"
+    ],
+    "risk_score": 0.7120011708764705,
+    "transaction_type": "concentration_risk"
+  },
+  {
+    "amount_usd": 17076.781475578136,
+    "case_id": "credit_approval-S0-0000",
+    "completeness": 0.9775769893480768,
+    "counterparty_risk": 0.18257875630279086,
+    "customer_tenure_years": 3.057180251753565,
+    "gt_decision": "CONDITIONAL",
+    "gt_rationale": "Single minor flag with manageable risk and good info.",
+    "gt_rule_id": "DET-15",
+    "jurisdiction": "LATAM",
+    "regulatory_flags": [
+      "KYC"
+    ],
+    "risk_score": 0.22188193367426123,
+    "transaction_type": "credit_approval"
+  },
+  {
+    "amount_usd": 19482.85937817001,
+    "case_id": "credit_approval-S0-0003",
+    "completeness": 0.530749366762699,
+    "counterparty_risk": 0.11855915621636075,
+    "customer_tenure_years": 8.30514763323051,
+    "gt_decision": "CONDITIONAL",
+    "gt_rationale": "Concentration risk alone at low risk level is conditional.",
+    "gt_rule_id": "DET-14",
+    "jurisdiction": "US",
+    "regulatory_flags": [
+      "CONCENTRATION"
+    ],
+    "risk_score": 0.2476543895576244,
+    "transaction_type": "credit_approval"
+  },
+  {
+    "amount_usd": 77354.49492074865,
+    "case_id": "credit_approval-S0-0005",
+    "completeness": 0.7188681787098855,
+    "counterparty_risk": 0.20907571563360272,
+    "customer_tenure_years": 2.723877655110954,
+    "gt_decision": "APPROVE",
+    "gt_rationale": "Clean case with adequate info and low risk.",
+    "gt_rule_id": "DET-12",
+    "jurisdiction": "EU",
+    "regulatory_flags": [],
+    "risk_score": 0.08758796637147036,
+    "transaction_type": "credit_approval"
+  },
+  {
+    "amount_usd": 374356.8967318819,
+    "case_id": "credit_approval-S0-0006",
+    "completeness": 0.8368704767754028,
+    "counterparty_risk": 0.10371514774783737,
+    "customer_tenure_years": 2.5995114323296313,
+    "gt_decision": "APPROVE",
+    "gt_rationale": "Low-risk, clean, well-documented case is straightforward approval.",
+    "gt_rule_id": "DET-10",
+    "jurisdiction": "APAC",
+    "regulatory_flags": [],
+    "risk_score": 0.13056159546116167,
+    "transaction_type": "credit_approval"
+  },
+  {
+    "amount_usd": 75085.85364594928,
+    "case_id": "credit_approval-S0-0050",
+    "completeness": 0.96180496121721,
+    "counterparty_risk": 0.14251913235023567,
+    "customer_tenure_years": 2.276404008847725,
+    "gt_decision": "ESCALATE",
+    "gt_rationale": "Insider trading flag always requires human escalation.",
+    "gt_rule_id": "DET-04",
+    "jurisdiction": "EU",
+    "regulatory_flags": [
+      "INSIDER"
+    ],
+    "risk_score": 0.5759756114204716,
+    "transaction_type": "credit_approval"
+  },
+  {
+    "amount_usd": 71075.74880204063,
+    "case_id": "credit_approval-S0-0056",
+    "completeness": 0.9184983826751166,
+    "counterparty_risk": 0.231055877162587,
+    "customer_tenure_years": 5.908979080914702,
+    "gt_decision": "ESCALATE",
+    "gt_rationale": "Insider trading flag always requires human escalation.",
+    "gt_rule_id": "DET-04",
+    "jurisdiction": "UK",
+    "regulatory_flags": [
+      "INSIDER"
+    ],
+    "risk_score": 0.4549844698622523,
+    "transaction_type": "credit_approval"
+  },
+  {
+    "amount_usd": 14021.578815545177,
+    "case_id": "fraud_alert-S0-0100",
+    "completeness": 0.09774499990147686,
+    "counterparty_risk": 0.6916757505552077,
+    "customer_tenure_years": 2.9760309004248,
+    "gt_decision": "DEFER",
+    "gt_rationale": "Insufficient information to make any decision.",
+    "gt_rule_id": "DET-07",
+    "jurisdiction": "EU",
+    "regulatory_flags": [
+      "KYC",
+      "SANCTIONS"
+    ],
+    "risk_score": 0.7361687450811968,
+    "transaction_type": "fraud_alert"
+  },
+  {
+    "amount_usd": 3480.1633344989264,
+    "case_id": "fraud_alert-S0-0101",
+    "completeness": 0.4059435361849834,
+    "counterparty_risk": 0.5652666973358408,
+    "customer_tenure_years": 3.920606900868778,
+    "gt_decision": "ESCALATE",
+    "gt_rationale": "Insider trading flag always requires human escalation.",
+    "gt_rule_id": "DET-04",
+    "jurisdiction": "LATAM",
+    "regulatory_flags": [
+      "CONCENTRATION",
+      "INSIDER"
+    ],
+    "risk_score": 0.9634656082093109,
+    "transaction_type": "fraud_alert"
+  },
+  {
+    "amount_usd": 7156.173816327909,
+    "case_id": "fraud_alert-S0-0102",
+    "completeness": 0.6088315395509688,
+    "counterparty_risk": 0.6014455457103536,
+    "customer_tenure_years": 4.394606290299805,
+    "gt_decision": "DECLINE",
+    "gt_rationale": "AML flag combined with elevated risk requires decline.",
+    "gt_rule_id": "DET-02",
+    "jurisdiction": "LATAM",
+    "regulatory_flags": [
+      "AML"
+    ],
+    "risk_score": 0.8995871078514039,
+    "transaction_type": "fraud_alert"
+  },
+  {
+    "amount_usd": 10039.217641371664,
+    "case_id": "fraud_alert-S0-0103",
+    "completeness": 0.051139892132436734,
+    "counterparty_risk": 0.38227321002407316,
+    "customer_tenure_years": 0.2634294066121403,
+    "gt_decision": "DEFER",
+    "gt_rationale": "Insufficient information to make any decision.",
+    "gt_rule_id": "DET-07",
+    "jurisdiction": "EU",
+    "regulatory_flags": [
+      "AML"
+    ],
+    "risk_score": 0.6363832421133402,
+    "transaction_type": "fraud_alert"
+  },
+  {
+    "amount_usd": 951.5782789159987,
+    "case_id": "fraud_alert-S0-0104",
+    "completeness": 0.13628786318636094,
+    "counterparty_risk": 0.5533263715529645,
+    "customer_tenure_years": 10.818949458967243,
+    "gt_decision": "DECLINE",
+    "gt_rationale": "AML flag combined with elevated risk requires decline.",
+    "gt_rule_id": "DET-02",
+    "jurisdiction": "EU",
+    "regulatory_flags": [
+      "AML",
+      "INSIDER"
+    ],
+    "risk_score": 0.8842463534581314,
+    "transaction_type": "fraud_alert"
+  },
+  {
+    "amount_usd": 80420.90161721062,
+    "case_id": "fraud_alert-S0-0127",
+    "completeness": 0.4255644458262367,
+    "counterparty_risk": 0.674298275116704,
+    "customer_tenure_years": 0.9419317045518777,
+    "gt_decision": "ESCALATE",
+    "gt_rationale": "Insider trading flag always requires human escalation.",
+    "gt_rule_id": "DET-04",
+    "jurisdiction": "LATAM",
+    "regulatory_flags": [
+      "INSIDER",
+      "KYC"
+    ],
+    "risk_score": 0.713810640759819,
+    "transaction_type": "fraud_alert"
+  },
+  {
+    "amount_usd": 25158.428288293686,
+    "case_id": "sanctions_screening-S0-0205",
+    "completeness": 0.24991424714393776,
+    "counterparty_risk": 0.7572269941099183,
+    "customer_tenure_years": 8.739181748343839,
+    "gt_decision": "DEFER",
+    "gt_rationale": "Incomplete info with non-trivial risk requires more data.",
+    "gt_rule_id": "DET-08",
+    "jurisdiction": "UK",
+    "regulatory_flags": [
+      "SANCTIONS"
+    ],
+    "risk_score": 0.4478109379666525,
+    "transaction_type": "sanctions_screening"
+  },
+  {
+    "amount_usd": 644698.3509262565,
+    "case_id": "sanctions_screening-S0-0206",
+    "completeness": 0.28167839243185333,
+    "counterparty_risk": 0.8520298572450218,
+    "customer_tenure_years": 0.535242938034189,
+    "gt_decision": "DEFER",
+    "gt_rationale": "Sanctions case with insufficient info cannot be resolved.",
+    "gt_rule_id": "DET-09",
+    "jurisdiction": "UK",
+    "regulatory_flags": [
+      "SANCTIONS"
+    ],
+    "risk_score": 0.8453846757854326,
+    "transaction_type": "sanctions_screening"
+  },
+  {
+    "amount_usd": 193121.17296606483,
+    "case_id": "sanctions_screening-S0-0215",
+    "completeness": 0.5286409507202244,
+    "counterparty_risk": 0.4208708857982224,
+    "customer_tenure_years": 0.9356884011323551,
+    "gt_decision": "DECLINE",
+    "gt_rationale": "AML flag combined with elevated risk requires decline.",
+    "gt_rule_id": "DET-02",
+    "jurisdiction": "EU",
+    "regulatory_flags": [
+      "AML",
+      "SANCTIONS"
+    ],
+    "risk_score": 0.7159068743806742,
+    "transaction_type": "sanctions_screening"
+  },
+  {
+    "amount_usd": 673139.0739406691,
+    "case_id": "sanctions_screening-S0-0234",
+    "completeness": 0.6694755988161969,
+    "counterparty_risk": 0.925788085717045,
+    "customer_tenure_years": 1.2979369393867626,
+    "gt_decision": "ESCALATE",
+    "gt_rationale": "Insider trading flag always requires human escalation.",
+    "gt_rule_id": "DET-04",
+    "jurisdiction": "LATAM",
+    "regulatory_flags": [
+      "AML",
+      "INSIDER",
+      "SANCTIONS"
+    ],
+    "risk_score": 0.301186233793244,
+    "transaction_type": "sanctions_screening"
+  },
+  {
+    "amount_usd": 39919.80721298845,
+    "case_id": "sanctions_screening-S0-0244",
+    "completeness": 0.32414324847652254,
+    "counterparty_risk": 0.36007643524445965,
+    "customer_tenure_years": 1.4730109471322668,
+    "gt_decision": "DECLINE",
+    "gt_rationale": "AML flag combined with elevated risk requires decline.",
+    "gt_rule_id": "DET-02",
+    "jurisdiction": "EU",
+    "regulatory_flags": [
+      "AML",
+      "SANCTIONS"
+    ],
+    "risk_score": 0.8265414900395752,
+    "transaction_type": "sanctions_screening"
+  },
+  {
+    "amount_usd": 99264.57219098248,
+    "case_id": "sanctions_screening-S0-0262",
+    "completeness": 0.8241204880947665,
+    "counterparty_risk": 0.5366021327494078,
+    "customer_tenure_years": 4.688237405482268,
+    "gt_decision": "ESCALATE",
+    "gt_rationale": "Insider trading flag always requires human escalation.",
+    "gt_rule_id": "DET-04",
+    "jurisdiction": "US",
+    "regulatory_flags": [
+      "INSIDER",
+      "SANCTIONS"
+    ],
+    "risk_score": 0.23993457426606737,
+    "transaction_type": "sanctions_screening"
+  }
+]
