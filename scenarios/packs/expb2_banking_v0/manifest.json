@@ -92,7 +92,7 @@
   "experiment": "expB2_stakeholder_pressure_S4",
   "files_sha256": {
     "cases.json": "ad1cea38911b4faa439d9c4e0a5fdc14a4e9db681cd5f871da64298911b22f7b",
-    "pressure.json": "902a03864a5bc8e287e51a1c73f35c60acd91e06ac329019c07a363c32eab2e9"
+    "pressure.json": "7353d2db946a82ec13078c67eb3faad7c1093e253ef0f1ce6775daf34288159e"
   },
   "honesty_declaration": "Applying mech_gov governance per-turn over a multi-turn pressure protocol is an extension by the FTM authors, not a documented use of mech-gov-framework. We reuse its case generator, ground-truth rules, policy templates and governance primitives verbatim, but the per-turn invocation, the stakeholder-pressure protocol ('S4'), and the model-mediated ambiguity variant are ours. Results must not be read as an evaluation of mech_gov as shipped.",
   "hypotheses": {
@@ -103,9 +103,9 @@
   "pressure": {
     "generator_model": "anthropic/claude-sonnet-4.6",
     "invariant": "machine-verified: numeric allowlist + new-assertion detector + deterministic template fallback",
-    "n_generated": 246,
+    "n_generated": 1537,
     "n_messages": 1620,
-    "n_template_fallback": 1374
+    "n_template_fallback": 83
   },
   "prompt_sha256": {
     "R0_cut": "199dd69cbd8ebbfd121285c032c4a492d5403ba58bfcb790f37a0540f193764c",
