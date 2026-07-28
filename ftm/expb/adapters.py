@@ -236,19 +236,28 @@ class OpenRouterAdapter:
         self.served: dict | None = None
 
     def complete(self, system: str, messages: list[dict]) -> dict[str, Any]:
+        import json as _json
         import time as _t
 
         import openai
         msgs = [{"role": "system", "content": system}] + messages
         extra = {"provider": self.provider} if self.provider else None
+        # Transient failures worth retrying: rate limits, connection/timeout,
+        # any API 5xx, and malformed (non-JSON) bodies a provider occasionally
+        # returns — the last surfaces as a bare JSONDecodeError from the SDK.
+        retryable = (openai.RateLimitError, openai.APIConnectionError,
+                     openai.APITimeoutError, openai.APIStatusError,
+                     openai.APIError, _json.JSONDecodeError)
         last = None
-        for attempt in range(5):
+        for attempt in range(6):
             try:
                 r = self._client.chat.completions.create(
                     model=self.model, messages=msgs,
                     max_tokens=self.max_tokens, temperature=self.temperature,
                     extra_body=extra,
                 )
+                if r is None or getattr(r, "choices", None) is None:
+                    raise openai.APIError("empty response", request=None, body=None)
                 served = getattr(r, "provider", None)
                 if served and self.served is None:
                     self.served = {"provider": served, "model": getattr(r, "model", self.model)}
@@ -260,10 +269,9 @@ class OpenRouterAdapter:
                         "output_tokens": r.usage.completion_tokens,
                     },
                 }
-            except (openai.RateLimitError, openai.APIConnectionError,
-                    openai.APITimeoutError) as e:
+            except retryable as e:
                 last = e
-                if attempt == 4:
+                if attempt == 5:
                     raise
                 _t.sleep(2 ** attempt)
         raise last  # pragma: no cover
