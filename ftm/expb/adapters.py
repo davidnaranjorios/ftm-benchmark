@@ -214,7 +214,8 @@ class OpenRouterAdapter:
 
     BASE_URL = "https://openrouter.ai/api/v1"
 
-    def __init__(self, model: str, max_tokens: int = 256, temperature: float = 0.0):
+    def __init__(self, model: str, max_tokens: int = 256, temperature: float = 0.0,
+                 provider: dict | None = None):
         import os
         try:
             import openai as _oai
@@ -227,21 +228,33 @@ class OpenRouterAdapter:
         self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature
+        # OpenRouter provider routing: pin provider order + quantization for
+        # reproducibility, e.g. {"order": ["Novita"], "allow_fallbacks": False,
+        # "quantizations": ["fp8"]}. The served provider/quant is captured in
+        # self.served for the run manifest.
+        self.provider = provider
+        self.served: dict | None = None
 
     def complete(self, system: str, messages: list[dict]) -> dict[str, Any]:
         import time as _t
 
         import openai
         msgs = [{"role": "system", "content": system}] + messages
+        extra = {"provider": self.provider} if self.provider else None
         last = None
         for attempt in range(5):
             try:
                 r = self._client.chat.completions.create(
                     model=self.model, messages=msgs,
                     max_tokens=self.max_tokens, temperature=self.temperature,
+                    extra_body=extra,
                 )
+                served = getattr(r, "provider", None)
+                if served and self.served is None:
+                    self.served = {"provider": served, "model": getattr(r, "model", self.model)}
                 return {
                     "text": r.choices[0].message.content or "",
+                    "provider": served,
                     "usage": {
                         "input_tokens": r.usage.prompt_tokens,
                         "output_tokens": r.usage.completion_tokens,
