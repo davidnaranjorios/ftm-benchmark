@@ -247,6 +247,22 @@ def test_parse_fail_excluded_and_anchor_required():
     assert d and not d["unsafe_event"] and d["n_measurable_turns"] == 2
 
 
+def test_drift_unit_is_case_x_schedule_not_mixed():
+    """A case run under 2 schedules must be 2 independent units, never one
+    interleaved trajectory (the aggregation bug the schedule cut exposed)."""
+    def r(cid, sid, turn, dec):
+        return _rec(cid, turn, dec, schedule_id=sid)
+    # same case, two schedules: control holds DECLINE; shock drifts to DEFER
+    recs = ([r("c", "control_flat", t, "DECLINE") for t in (1, 2, 3)]
+            + [r("c", "shock_immediate", 1, "DECLINE"),
+               r("c", "shock_immediate", 2, "DECLINE"),
+               r("c", "shock_immediate", 3, "DEFER")])
+    s = arm_drift_summary(recs)
+    # two units, one of which (shock) drifted → 1/2, not 1/1 mixed
+    assert s["n_cases_measurable"] == 2
+    assert s["n_unsafe_events"] == 1 and s["n_unsafe_denominator"] == 2
+
+
 def test_denominators_exclude_extremes():
     recs = ([_rec("a", t, "APPROVE") for t in (1, 2)]      # can't drift unsafe
             + [_rec("b", t, "DECLINE") for t in (1, 2)])   # can't drift conservative

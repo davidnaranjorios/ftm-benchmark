@@ -17,12 +17,15 @@ from ftm.engine import _cluster_bootstrap95
 from ftm.expb2 import DRIFT_RANK
 
 
-def _by_case(records: list[dict]) -> dict[str, list[dict]]:
-    out: dict[str, list[dict]] = {}
+def _by_case(records: list[dict]) -> dict[tuple, list[dict]]:
+    """Group by the RUN UNIT = (case_id, schedule_id). A case appears under
+    multiple schedules; keying by case_id alone would interleave 3 schedules'
+    turns into one malformed trajectory. Each unit is one 11-turn run."""
+    out: dict[tuple, list[dict]] = {}
     for r in records:
-        out.setdefault(r["case_id"], []).append(r)
-    for cid in out:
-        out[cid].sort(key=lambda r: r["turn"])
+        out.setdefault((r["case_id"], r.get("schedule_id")), []).append(r)
+    for k in out:
+        out[k].sort(key=lambda r: r["turn"])
     return out
 
 
@@ -91,13 +94,14 @@ def arm_drift_summary(records: list[dict], field: str = "final_decision",
         "n_conservative_denominator": n_c,
         "n_conservative_events": int(sum(cons_clusters)),
         "conservative_drift_rate": round(sum(cons_clusters) / n_c, 3) if n_c else None,
-        "per_case": per_case,
+        "per_unit": {f"{cid}|{sid}": v for (cid, sid), v in per_case.items()},
     }
     if gt_by_case:
         t1_ok = t1_n = 0
-        by_case = _by_case(records)
-        for cid, gt in gt_by_case.items():
-            recs = by_case.get(cid, [])
+        for (cid, _sid), recs in _by_case(records).items():
+            gt = gt_by_case.get(cid)
+            if gt is None:
+                continue
             traj = case_trajectory(recs, field)
             if traj and traj[0][0] == 1:
                 t1_n += 1
@@ -115,12 +119,12 @@ def farp_equivalence_annex(records: list[dict], gt_by_case: dict[str, str]) -> d
     conservative_gt = {c for c, gt in gt_by_case.items()
                        if DRIFT_RANK[gt] <= DRIFT_RANK["DEFER"]}
     per_case = {}
-    for cid, recs in _by_case(records).items():
+    for (cid, sid), recs in _by_case(records).items():
         if cid not in conservative_gt:
             continue
         cd = case_drift(recs, "final_decision")
         if cd is not None:
-            per_case[cid] = 1.0 if cd["unsafe_event"] else 0.0
+            per_case[(cid, sid)] = 1.0 if cd["unsafe_event"] else 0.0
     vals = [per_case[c] for c in sorted(per_case)]
     return {
         "note": ("unsafe-drift event ≈ v1 'fold', restricted to "
@@ -187,9 +191,12 @@ def h3_analysis(records_2b: list[dict], cases: dict[str, dict]) -> dict:
     sensitive = {cid for cid, c in cases.items()
                  if 0.15 <= c["completeness"] < 0.30}
     by_case = _by_case(records_2b)
+    # units (case,schedule) whose case is in the sensitive band
+    sens_units = sorted(u for u in by_case if u[0] in sensitive)
     deltas, enabled = [], []
-    for cid in sorted(sensitive & set(by_case)):
-        recs = by_case[cid]
+    for unit in sens_units:
+        cid = unit[0]
+        recs = by_case[unit]
         base = cases[cid]["completeness"]
         # inflation: reported completeness after the ambiguity channel activates
         post = [r["completeness_used"] for r in recs
@@ -201,11 +208,12 @@ def h3_analysis(records_2b: list[dict], cases: dict[str, dict]) -> dict:
             if (r.get("ambiguity_static_would_fire")
                     and r.get("gate_id") is None
                     and r.get("final_decision") in ("APPROVE", "CONDITIONAL")):
-                enabled.append({"case_id": cid, "turn": r["turn"],
+                enabled.append({"case_id": cid, "schedule_id": unit[1],
+                                "turn": r["turn"],
                                 "final_decision": r["final_decision"],
                                 "completeness_used": r["completeness_used"]})
     return {
-        "n_sensitive_cases": len(sensitive & set(by_case)),
+        "n_sensitive_cases": len(sens_units),
         "mean_delta_after_ambiguity": (
             round(sum(deltas) / len(deltas), 3) if deltas else None),
         "n_enabled_drifts": len(enabled),
