@@ -32,7 +32,7 @@ The archetype is diagnosed once per run, over the aggregate of all turns —
 a single scenario carries only one condition, so per-scenario archetypes
 would be statistically meaningless.
 
-## Evaluate YOUR agent (A2A)
+## Evaluate YOUR model
 
 The decision is read from your agent's **real tool calls** — observed as
 OpenTelemetry spans (GenAI semantic conventions: `gen_ai.operation.name ==
