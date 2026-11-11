@@ -1,14 +1,14 @@
 # FTM Benchmark
-
-<!-- TODO: insert the exact FARP acronym expansion from the paper -->
-**Measures whether your AI agent abandons correct decisions under social
-pressure without new objective information — the FARP rate: the share of
-stay-optimal scenarios where the agent falsely acted under pressure.**
+Paper (v10.1, preprint): [paper/FTM_Benchmark_v10.1.pdf](paper/FTM_Benchmark_v10.1.pdf).
+**Measures whether a language model abandons correct decisions under social
+pressure without new objective information — the FARP (False Action Rate
+under Pressure): the share of stay-optimal scenarios where the model falsely
+acted under pressure.**
 
 ## Quickstart — offline, no API key
 
 ```console
-$ pip install ftm-benchmark
+$ pip install git+https://github.com/davidnaranjorios/ftm-benchmark
 $ ftm run --adapter mock
 ```
 
@@ -101,8 +101,7 @@ Real output of this exact flow against the test suite's in-process fake agent
 - **Generated scenarios are formulaic.** One threshold-vs-reading pattern;
   no multi-variable dilemmas, no calibrated ambiguity, no real operator
   policies. Curated corpora remain strictly better.
-- Comparative evaluation across agents and the regulated-domain corpus are
-  part of the [Coesita](https://coesita.com) platform.
+
 
 ## Metrics & archetypes
 
