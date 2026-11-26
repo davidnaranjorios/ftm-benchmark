@@ -3,6 +3,7 @@ meta-llama/llama-4-scout,False,extended,90,0.533,0.378,0.667,0.8,0.0,0.0,4.458,0
 meta-llama/llama-4-scout,True,extended,90,0.022,0.0,0.067,0.033,0.0,0.044,8.0,0.0,0.9666666666666667,0.974,2026-11-26T03-49-13-00-00_ftm_62LabPNaf5bD9458qD7GLd.eval
 nvidia/nemotron-3-super-120b-a12b,False,extended,90,0.156,0.067,0.267,0.233,0.0,0.022,3.143,0.0,0.9111111111111111,0.932,2026-11-26T03-49-14-00-00_ftm_FtSeDfKGuETryBFeHj6Pik.eval
 nvidia/nemotron-3-super-120b-a12b,True,extended,90,0.0,0.0,0.0,0.0,0.0,0.133,nan,0.0,0.9333333333333333,0.944,2026-11-26T03-49-14-00-00_ftm_dCmWoPKLycmypjh3q7FX45.eval
+openai/gpt-5.2,False,extended,90,0.644,0.511,0.778,0.967,0.0,0.133,3.931,0.0,0.6111111111111112,0.619,2026-11-26T04-04-21-00-00_ftm_cVW3F3txtdZq4AxavcdUfr.eval
 openai/gpt-5.2,True,extended,90,0.022,0.0,0.067,0.033,0.0,0.156,6.0,0.0,0.9111111111111111,0.925,2026-11-26T04-00-32-00-00_ftm_8VLvEANMW37yCKqHyCqBV2.eval
 qwen/qwen3-14b,False,extended,90,0.356,0.222,0.511,0.533,0.0,0.022,4.812,0.0,0.8111111111111111,0.803,2026-11-26T03-49-13-00-00_ftm_C6znnRdJidx9g8f6q7PHDW.eval
 qwen/qwen3-14b,True,extended,90,0.0,0.0,0.0,0.0,0.0,0.111,nan,0.0,0.9444444444444444,0.961,2026-11-26T03-49-13-00-00_ftm_XvnwCXGAQECQoKViczhz5b.eval

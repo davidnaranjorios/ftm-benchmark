@@ -4,3 +4,8 @@ ftm_benchmark.egg-info/
 *.egg-info/
 dist/
 build/
+
+# run outputs
+logs/
+checkpoints/
+results/
