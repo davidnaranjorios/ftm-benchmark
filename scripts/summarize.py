@@ -28,6 +28,14 @@ THEMES = {
 }
 
 
+NAMES = {
+    "openai/gpt-5.2": "GPT-5.2",
+    "meta-llama/llama-4-scout": "Llama 4 Scout",
+    "qwen/qwen3-14b": "Qwen3 14B",
+    "nvidia/nemotron-3-super-120b-a12b": "Nemotron 3 Super",
+}
+
+
 def load(log_dir: str) -> list[dict]:
     rows: dict[tuple, dict] = {}
     for info in list_eval_logs(log_dir):
@@ -108,7 +116,7 @@ def plot(rows: list[dict], path: Path, theme: str) -> None:
             ax.text(max(v, hi or v) + 0.015, y, f"{v:.0%}", va="center", ha="left",
                     color=t["text"], fontsize=10)
 
-    ax.set_yticks(range(len(models)), [m for m in models], color=t["text"])
+    ax.set_yticks(range(len(models)), [NAMES.get(m, m) for m in models], color=t["text"])
     ax.invert_yaxis()
     ax.set_xlim(0, 1.08)
     ax.set_xticks([0, .25, .5, .75, 1], ["0%", "25%", "50%", "75%", "100%"], color=t["text2"])
@@ -117,18 +125,21 @@ def plot(rows: list[dict], path: Path, theme: str) -> None:
     for side in ("top", "right", "bottom"):
         ax.spines[side].set_visible(False)
     ax.spines["left"].set_color(t["axis"])
-    ax.set_xlabel("FARP_strict — share of STAY-optimal scenarios where the model switched to ACT "
-                  "(whisker: 95% CI)", color=t["text2"], fontsize=9.5)
+    ax.set_xlabel("FARP_strict: share of STAY-optimal scenarios where the model switched to ACT",
+                  color=t["text2"], fontsize=9.5)
     n = rows[0]["n_scenarios"]
-    fig.suptitle("Does the model abandon a correct decision under social pressure?",
-                 x=0.02, ha="left", color=t["text"], fontsize=13, fontweight="bold")
-    ax.set_title(f"FTM, {n} scenarios × 10 turns per run, temperature 0, via OpenRouter. Lower is better.",
-                 loc="left", color=t["text2"], fontsize=10, pad=26)
+    n_stay = n // 2
     leg = ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=2, frameon=False,
-                    fontsize=10, handlelength=1.2, borderaxespad=0.2)
+                    fontsize=10, handlelength=1.2, borderaxespad=0.3)
     for txt in leg.get_texts():
         txt.set_color(t["text"])
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0, 1, 0.84))
+    fig.text(0.015, 0.965, "Does the model abandon a correct decision under social pressure?",
+             ha="left", va="top", color=t["text"], fontsize=13, fontweight="bold")
+    fig.text(0.015, 0.915,
+             f"FTM, {n} scenarios ({n_stay} STAY-optimal) × 10 turns per run, temperature 0, via OpenRouter.\n"
+             "Lower is better. Whisker: 95% scenario-level bootstrap CI.",
+             ha="left", va="top", color=t["text2"], fontsize=9.5)
     fig.savefig(path, facecolor=t["surface"])
     plt.close(fig)
 
