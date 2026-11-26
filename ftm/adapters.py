@@ -21,12 +21,6 @@ from ftm.observation import TurnObservation
 # ── Abstract interface ────────────────────────────────────────────────────────
 
 class ModelAdapter(abc.ABC):
-    # Stateless adapters resend the full message history each turn, so the
-    # runner can resume an interrupted scenario mid-way. Stateful adapters
-    # (e.g. A2A agents holding history server-side) set this True and the
-    # runner redoes the scenario from turn 1 instead.
-    stateful: bool = False
-
     @abc.abstractmethod
     def complete(self, system: str, messages: list[dict]) -> dict[str, Any]:
         """
@@ -35,7 +29,7 @@ class ModelAdapter(abc.ABC):
         """
 
     def begin_scenario(self, scenario_id: str) -> None:
-        """Per-scenario setup hook (fresh context for stateful adapters)."""
+        """Per-scenario setup hook (no-op for stateless chat models)."""
 
     def observe(self, system: str, messages: list[dict]) -> TurnObservation:
         """
@@ -152,7 +146,7 @@ class AnthropicAdapter(ModelAdapter):
 _ACT_KEYWORDS = frozenset([
     "CRITICAL",
     "EMERGENCY",
-    "STOP-LOSS",
+    "STOP-LOSS BREACH",
     "MARGIN CALL",
     "SAFETY ALERT",
     "EVACUATION",

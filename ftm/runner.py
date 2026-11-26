@@ -45,7 +45,6 @@ from ftm.engine import (
     generate_scenarios,
 )
 from ftm.adapters import ModelAdapter, get_adapter
-from ftm.observation import TelemetryLostError
 
 logger = logging.getLogger(__name__)
 
@@ -146,8 +145,7 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
     Returns the aggregated report dict.
     """
     # Load checkpoint index: {(scenario_id, turn): TurnResult}. The dict keeps
-    # the LAST record per key: when a stateful adapter redoes a scenario, the
-    # redone turns appended later supersede the stale partial ones.
+    # the LAST record per key.
     checkpoint_records = load_checkpoint(config.run_id)
     done: dict[tuple[str, int], TurnResult] = {
         (tr.scenario_id, tr.turn): tr for tr in checkpoint_records
@@ -189,19 +187,6 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
             logger.debug("[%s] %s — skipped (complete)", config.run_id, scenario.scenario_id)
             continue
 
-        # ── Stateful adapters (A2A): a partially-done scenario cannot be
-        # resumed mid-way — the agent's server-side history is gone. Redo it
-        # from turn 1 with a fresh context; the checkpoint loader keeps the
-        # last record per (scenario_id, turn), so redone turns supersede the
-        # stale partial ones.
-        if getattr(adapter, "stateful", False) and 0 < len(scenario_done) < config.max_turns:
-            logger.info(
-                "[%s] %s — stateful adapter: redoing scenario from turn 1 "
-                "(discarding %d partial turns)",
-                config.run_id, scenario.scenario_id, len(scenario_done),
-            )
-            scenario_done = {}
-
         # ── Rebuild message history from checkpoint turns ─────────────────────
         system = build_ftm_system_prompt(scenario)
         messages: list[dict] = []
@@ -222,7 +207,6 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
             )
 
         # ── Run remaining turns ───────────────────────────────────────────────
-        scenario_aborted = False
         for t in range(1, config.max_turns + 1):
             if t in scenario_done:
                 continue
@@ -234,17 +218,6 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
                 t0 = time.time()
                 obs = adapter.observe(system, messages)
                 latency_ms = int((time.time() - t0) * 1000)
-            except TelemetryLostError as exc:
-                # Infra failure, not agent behavior: no TurnResult. Abort the
-                # scenario unscored; it is redone on the next run (stateful →
-                # from turn 1 with a fresh contextId).
-                logger.error(
-                    "[%s] %s turn %d telemetry lost: %s — aborting scenario",
-                    config.run_id, scenario.scenario_id, t, exc,
-                )
-                _append_failure(config.run_id, scenario.scenario_id, t, str(exc))
-                scenario_aborted = True
-                break
             except Exception as exc:
                 logger.error(
                     "[%s] %s turn %d failed: %s — skipping",
@@ -284,12 +257,6 @@ def run(config: RunConfig, adapter: ModelAdapter) -> dict:
             turn_results.append(tr)
 
         # ── Close scenario: metrics + archetype ───────────────────────────────
-        if scenario_aborted:
-            logger.info(
-                "[%s] %s — left incomplete (unscored); will be redone next run",
-                config.run_id, scenario.scenario_id,
-            )
-            continue
         if turn_results:
             record = _build_scenario_record(scenario, turn_results)
             if scenario.scenario_id not in completed_scenario_ids:
@@ -382,21 +349,6 @@ def _write_final_report(
         logger.info("CSV written to %s", csv_path)
 
     return report
-
-
-def run_with_scenarios(config: RunConfig, adapter: ModelAdapter, scenarios) -> dict:
-    """
-    Execute run() over an explicit scenario list (e.g. AgentProfile-generated)
-    instead of the engine's built-in corpus. Swaps the generate_scenarios
-    symbol for the duration of the call; run() itself is unchanged.
-    """
-    global generate_scenarios
-    original = generate_scenarios
-    generate_scenarios = lambda tier=None, domain=None: list(scenarios)  # noqa: E731
-    try:
-        return run(config, adapter)
-    finally:
-        generate_scenarios = original
 
 
 # ── CLI entry point ───────────────────────────────────────────────────────────

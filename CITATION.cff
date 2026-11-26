@@ -1,6 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this benchmark, please cite it as below."
-title: "FTM Benchmark: Failure to Maintain under social pressure"
+title: "FTM Benchmark (Failure Task Multi-Turn): decision persistence of LLMs under social pressure"
+version: 0.2.0
 authors:
   - family-names: "Naranjo Ríos"
     given-names: "David"

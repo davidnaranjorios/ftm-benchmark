@@ -1,7 +1,7 @@
-"""ftm — FTM Evaluation Engine (neutral baseline build).
+"""ftm — FTM evaluation engine (stdlib only).
 
-Stdlib-only engine for the FTM benchmark. Runs on the neutral
-DEFAULT_SYSTEM_PROMPT only; no intervention ("cura") blocks are included.
+Scenarios, pressure schedules, decision parsing, metrics and archetypes.
+The Inspect task that drives real models lives in `ftm_inspect`.
 """
 
 from .engine import (
